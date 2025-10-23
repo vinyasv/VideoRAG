@@ -1,0 +1,13 @@
+google-cloud-aiplatform>=1.60.0
+google-cloud-videointelligence>=2.13.0
+google-cloud-storage>=2.18.0
+vertexai>=1.60.0
+elasticsearch[async]>=8.15.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.9.0
+pydantic-settings>=2.5.0
+python-multipart>=0.0.9
+python-dotenv>=1.0.0
+aiofiles>=24.1.0
+
