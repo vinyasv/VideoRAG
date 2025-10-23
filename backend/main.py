@@ -135,7 +135,9 @@ async def ask_question(request: QueryRequest):
                 detail="No relevant video clips found for your query"
             )
         
-        answer = vertex_ai_client.synthesize_answer(query_text, search_results)
+        answer = await vertex_ai_client.synthesize_answer(
+            query_text, search_results, request.video_id
+        )
         
         clips = [
             VideoClip(

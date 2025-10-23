@@ -1,76 +1,72 @@
+
 import sys
+import asyncio
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import vertexai
-from vertexai.vision_models import MultiModalEmbeddingModel
-from vertexai.generative_models import GenerativeModel
+from vertexai.generative_models import GenerativeModel, Part
 from config import settings
+from backend.video_clipper import create_clips_from_timestamps
+from backend.gcs_client import gcs_client
 
 vertexai.init(project=settings.PROJECT_ID, location=settings.LOCATION)
 
 class VertexAIClient:
     def __init__(self):
-        self.embedding_model = MultiModalEmbeddingModel.from_pretrained(settings.EMBEDDING_MODEL)
         self.gemini_model = GenerativeModel(settings.GEMINI_MODEL)
 
     def get_query_embedding(self, query_text: str) -> list[float]:
-        response = self.embedding_model.get_embeddings(
-            contextual_text=query_text,
-            dimension=settings.EMBEDDING_DIMENSION
-        )
-        return response.text_embedding
+        # This function is no longer used in the multimodal flow
+        # but kept for potential future use or debugging.
+        # In a real application, you might use a dedicated embedding model.
+        pass
 
-    def synthesize_answer(self, query: str, search_results: list) -> str:
+    async def synthesize_answer(self, query: str, search_results: list, video_id: str) -> str:
         if not search_results:
             return "No relevant clips found for your query."
 
-        context_lines = []
-        for r in search_results:
-            source = r['_source']
-            start_time = source['start_time_sec']
-            end_time = source['end_time_sec']
+        timestamps = [
+            {"start_time_sec": r['_source']['start_time_sec'], "end_time_sec": r['_source']['end_time_sec']}
+            for r in search_results
+        ]
 
-            line = f"- From {start_time:.1f}s to {end_time:.1f}s:"
-            context_lines.append(line)
+        source_video_uri = gcs_client.get_video_uri(video_id)
 
-            if source.get('labels'):
-                context_lines.append(f"  - Scene contains: {', '.join(source['labels'])}")
+        # 1. Create temporary clips
+        clipped_video_uris = await create_clips_from_timestamps(source_video_uri, timestamps)
 
-            if source.get('objects'):
-                object_descs = [o['description'] for o in source.get('objects', [])]
-                unique_descs = sorted(list(set(object_descs)))
-                context_lines.append(f"  - Objects detected: {', '.join(unique_descs)}")
+        if not clipped_video_uris:
+            return "Could not extract relevant video clips for analysis."
 
-            if source.get('ocr_text', '').strip():
-                context_lines.append(f"  - Text seen: '{source['ocr_text'].strip()}'")
+        try:
+            # 2. Build the multimodal prompt
+            prompt_parts = [
+                f"""You are an expert security analyst. A user is asking a question about a video.
+                Your task is to answer their question based *only* on the short video clips provided.
+                The user's query is: "{query}"
 
-        context = "\n".join(context_lines)
+                Analyze the following video clips and provide a concise, factual answer.
+                For every claim you make, you MUST state which clip it is based on (e.g., "In Clip 1, a person is seen...").
+                If the clips do not contain enough information, state that clearly.
+                """
+            ]
 
-        prompt = f"""You are an expert security analyst. Your task is to answer a user's query about a video based *only* on the provided data from relevant video clips. Follow these instructions carefully:
+            for i, uri in enumerate(clipped_video_uris):
+                prompt_parts.append(f"\n--- Clip {i+1} ---")
+                prompt_parts.append(Part.from_uri(uri, mime_type="video/mp4"))
 
-1.  **Analyze the Data**: Review the `Video Clips Data` section, which contains timestamped information about labels, objects, and text detected in the video.
-2.  **Synthesize a Timeline**: Based on the data, construct a brief, factual timeline of events relevant to the user's query. Do not infer actions or intentions beyond what is explicitly described in the data.
-3.  **Formulate Your Answer**: Based on your timeline, provide a clear and direct answer to the `User Query`.
-4.  **Cite Your Evidence**: For every claim you make, you MUST cite the start and end time of the clip(s) that support it (e.g., "At 00:15-00:23, a person is seen...").
-5.  **Be Concise**: Keep your answer focused and to the point. If the provided clips do not contain enough information to answer the query, state that clearly.
+            # 3. Call the Gemini model
+            response = await self.gemini_model.generate_content_async(prompt_parts)
+            return response.text
 
----
+        finally:
+            # 4. Clean up the temporary clips
+            print(f"Cleaning up {len(clipped_video_uris)} temporary clips...")
+            await asyncio.gather(*[
+                asyncio.to_thread(gcs_client.delete_video, uri) for uri in clipped_video_uris
+            ])
+            print("Cleanup complete.")
 
-**User Query**: "{query}"
-
----
-
-**Video Clips Data**:
-{context}
-
----
-
-**Your Analysis**:
-(Begin your response here, following the instructions above)
-"""
-
-        response = self.gemini_model.generate_content(prompt)
-        return response.text
 
 vertex_ai_client = VertexAIClient()
