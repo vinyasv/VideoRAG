@@ -4,7 +4,7 @@ const videoPlayer = document.getElementById('mainVideo');
 const queryInput = document.getElementById('queryInput');
 const sendBtn = document.getElementById('sendBtn');
 const chatHistory = document.getElementById('chatHistory');
-let currentVideoId = 'normal_video_1';
+let currentVideoId = 'fire2';
 
 function formatTime(seconds) {
     const mins = Math.floor(seconds / 60);
@@ -13,6 +13,11 @@ function formatTime(seconds) {
 }
 
 function appendMessage(role, text) {
+    const chatEmptyState = document.getElementById('chatEmptyState');
+    if (chatEmptyState) {
+        chatEmptyState.classList.add('hidden');
+    }
+    
     const msg = document.createElement('div');
     msg.className = `message ${role}`;
     msg.textContent = text;

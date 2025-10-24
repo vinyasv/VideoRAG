@@ -34,13 +34,15 @@ def update_video_summary(video_id, summary):
 
 async def index_documents_async(es_client, documents):
     """Index documents using async bulk operations with progress tracking"""
-    actions = [
-        {
+    actions = []
+    for doc in documents:
+        # Create a deterministic, unique ID for each video segment
+        doc_id = f"{doc['video_id']}_{doc['start_time_sec']}"
+        actions.append({
             "_index": settings.VIDEO_INDEX_NAME,
+            "_id": doc_id,
             "_source": doc
-        }
-        for doc in documents
-    ]
+        })
     
     print(f"Indexing {len(actions)} documents...")
     success_count = 0

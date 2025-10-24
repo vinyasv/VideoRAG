@@ -60,10 +60,10 @@ async def ask_question(request: QueryRequest):
     
     try:
         query_embedding = vertex_ai_client.get_query_embedding(query_text)
-        
+
         search_results = await es_client.hybrid_search(
-            query_text=query_text,
             query_embedding=query_embedding,
+            query_text=query_text,
             video_id=request.video_id,
             top_k=5
         )
@@ -85,7 +85,7 @@ async def ask_question(request: QueryRequest):
             VideoClip(
                 start_time_sec=hit['_source']['start_time_sec'],
                 end_time_sec=hit['_source']['end_time_sec'],
-                score=hit['_score'],
+                score=hit.get('_normalized_score', hit['_score']),  # Use normalized score if available
                 labels=hit['_source'].get('labels', []),
                 ocr_text=hit['_source'].get('ocr_text', '')
             )

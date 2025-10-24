@@ -19,7 +19,7 @@ class GCSClient:
         else:
             self.client = storage.Client(project=settings.PROJECT_ID)
         
-        self.bucket_name = f"{settings.PROJECT_ID}-sentinel-videos-public"
+        self.bucket_name = settings.GCS_BUCKET
         self.bucket = self._get_or_create_bucket()
     
     def _get_or_create_bucket(self):
@@ -60,7 +60,7 @@ class GCSClient:
     def get_signed_url(self, video_id: str, expiration_hours: int = 24) -> str:
         blob_name = f"{video_id}.mp4"
         blob = self.bucket.blob(blob_name)
-        
+
         url = blob.generate_signed_url(
             expiration=timedelta(hours=expiration_hours),
             method='GET'

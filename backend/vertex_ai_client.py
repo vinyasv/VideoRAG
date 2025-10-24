@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import vertexai
 from vertexai.generative_models import GenerativeModel, Part
+from vertexai.vision_models import MultiModalEmbeddingModel
 from config import settings
 from backend.video_clipper import create_clips_from_timestamps
 from backend.gcs_client import gcs_client
@@ -15,12 +16,20 @@ vertexai.init(project=settings.PROJECT_ID, location=settings.LOCATION)
 class VertexAIClient:
     def __init__(self):
         self.gemini_model = GenerativeModel(settings.GEMINI_MODEL)
+        self.embedding_model = MultiModalEmbeddingModel.from_pretrained(settings.EMBEDDING_MODEL)
 
-    def get_query_embedding(self, query_text: str) -> list[float]:
-        # This function is no longer used in the multimodal flow
-        # but kept for potential future use or debugging.
-        # In a real application, you might use a dedicated embedding model.
-        pass
+    def get_query_embedding(self, query_text: str) -> list[float] | None:
+        """Generate text embedding for search query using the multimodal embedding model."""
+        try:
+            embedding_response = self.embedding_model.get_embeddings(
+                contextual_text=query_text,
+                dimension=settings.EMBEDDING_DIMENSION
+            )
+            return embedding_response.text_embedding
+        except Exception as e:
+            print(f"⚠️ Warning: Failed to generate query embedding: {e}")
+            print("   Falling back to text-only search")
+            return None
 
     async def synthesize_answer(self, query: str, search_results: list, video_id: str, video_summary: str) -> str:
         if not search_results:
@@ -47,21 +56,37 @@ class VertexAIClient:
 
         try:
             # 2. Build the multimodal prompt
+            # Detect if this is a temporal query
+            temporal_keywords = ['when', 'what time', 'time did', 'at what', 'hour', 'minute', 'o\'clock']
+            is_temporal = any(kw in query.lower() for kw in temporal_keywords)
+
+            # Build temporal-specific instructions
+            temporal_instructions = ""
+            if is_temporal:
+                temporal_instructions = """
+IMPORTANT: This is a TEMPORAL query asking about WHEN something happened.
+- Look CAREFULLY for visible timestamps in security camera overlays (common format: MM-DD-YYYY HH:MM:SS AM/PM)
+- If you see timestamps displayed in the video frame (usually in corners or overlays), extract the EXACT time
+- Include the specific time in your answer (e.g., "at 12:14:27 PM on 09/14/2016")
+- If no timestamp is visible, indicate times relative to the clip (e.g., "approximately 0:04 into the clip")
+"""
+
             prompt_parts = [
-                f"""You are an expert security analyst. A user is asking a question about a video.
+                f"""You are an expert security analyst analyzing security footage.
+{temporal_instructions}
+First, here is a high-level summary of the entire video for context:
+---
+{video_summary}
+---
 
-                First, here is a high-level summary of the entire video for context:
-                ---
-                {video_summary}
-                ---
+Now, using that summary for context, your main task is to answer the user's specific query. Base all your factual claims *only* on the short video clips provided below.
+The user's query is: "{query}"
 
-                Now, using that summary for context, your main task is to answer the user's specific query. Base all your factual claims *only* on the short video clips provided below.
-                The user's query is: "{query}"
-
-                Analyze the following video clips and provide a concise, factual answer.
-                For every claim you make, you MUST state which clip it is based on (e.g., "In Clip 1, a person is seen...").
-                If the clips do not contain enough information, state that clearly.
-                Finally, provide a concluding sentence that connects your clip analysis to the overall video summary.
+Analyze the following video clips and provide a concise, factual answer.
+For every claim you make, you MUST state which clip it is based on (e.g., "In Clip 1, a person is seen...").
+{f'For temporal queries, ALWAYS try to include specific times if they are visible in the footage.' if is_temporal else ''}
+If the clips do not contain enough information, state that clearly.
+Finally, provide a concluding sentence that connects your clip analysis to the overall video summary.
                 """
             ]
 

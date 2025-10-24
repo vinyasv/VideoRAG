@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sentinel - AI Security Video Search</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -14,51 +17,50 @@
         
         <div class="content">
             <div class="video-section">
-                <h2 id="videoTitle">Fire</h2>
-                
+                <h2 id="videoTitle">Fire Response Video</h2>
+
                 <div class="video-container">
                     <video id="mainVideo" controls controlsList="nodownload" preload="metadata">
-                        <source src="https://storage.googleapis.com/hackathon1-475906-sentinel-videos-public/fire2.mp4" type="video/mp4">
+                        <source src="" type="video/mp4">
                         Your browser does not support the video tag.
                     </video>
                 </div>
-                
+
                 <div class="video-carousel">
-                    <div class="video-card" data-video-id="fire2" data-src="https://storage.googleapis.com/hackathon1-475906-sentinel-videos-public/fire2.mp4" data-title="Fire">
+                    <div class="video-card active" data-video-id="fire2" data-title="Fire Response Video">
                         <video class="video-thumbnail" muted>
-                            <source src="https://storage.googleapis.com/hackathon1-475906-sentinel-videos-public/fire2.mp4" type="video/mp4">
+                            <source src="" type="video/mp4">
                         </video>
                         <div class="video-card-info">
-                            <span class="video-card-title">Fire</span>
-                            <span class="video-card-duration">0:00</span>
+                            <span class="video-card-title">Fire Response - 4:07 Min</span>
                         </div>
                     </div>
-                    <div class="video-card" data-video-id="burglary_video_compressed" data-src="burglary_video.mp4" data-title="Burglary Attempt">
+                    <div class="video-card" data-video-id="burglars_new" data-title="Burglary Attempt Video">
                         <video class="video-thumbnail" muted>
-                            <source src="burglary_video.mp4" type="video/mp4">
+                            <source src="" type="video/mp4">
                         </video>
                         <div class="video-card-info">
-                            <span class="video-card-title">Burglary Attempt</span>
-                            <span class="video-card-duration">2:51</span>
+                            <span class="video-card-title">Burglary Attempt - 2:51 Min</span>
                         </div>
                     </div>
                 </div>
             </div>
             
             <div class="chat-section">
+                <div class="chat-empty-state" id="chatEmptyState">
+                    <p>Ask Questions about what happened in the video or when they happened</p>
+                </div>
                 <div class="chat-history" id="chatHistory"></div>
                 
                 <div class="chat-input-container">
                     <input 
                         type="text" 
                         id="queryInput" 
-                        placeholder="Ask a question about your history"
+                        placeholder="Ask a question about this video"
                         autocomplete="off"
                     >
                     <button id="sendBtn">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                        </svg>
+                        <img src="assets/send-icon.svg" alt="Send" width="17.7" height="17.93">
                     </button>
                 </div>
             </div>

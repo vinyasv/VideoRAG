@@ -46,7 +46,12 @@ def create_video_index():
                     "similarity": "cosine"
                 },
                 "labels": {
-                    "type": "keyword"
+                    "type": "text",
+                    "fields": {
+                        "keyword": {
+                            "type": "keyword"
+                        }
+                    }
                 },
                 "ocr_text": {
                     "type": "text",
@@ -61,7 +66,12 @@ def create_video_index():
                     "type": "nested",
                     "properties": {
                         "description": {
-                            "type": "keyword"
+                            "type": "text",
+                            "fields": {
+                                "keyword": {
+                                    "type": "keyword"
+                                }
+                            }
                         },
                         "track_id": {
                             "type": "keyword"
