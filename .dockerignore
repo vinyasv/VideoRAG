@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment
+.env
+.env.local
+*.env
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+tests/
+
+# Documentation
+*.md
+docs/
+
+# Data files (exclude large data files)
+data/
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# But include frontend videos for deployment
+!frontend/videos/*.mp4
+
+# Local development
+.claude/
+.claude-code-router/
+sentinel-key.json
+
+# Logs
+*.log

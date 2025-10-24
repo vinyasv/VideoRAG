@@ -55,7 +55,9 @@ class GCSClient:
 
     
     def get_video_uri(self, video_id: str) -> str:
-        return f"gs://{self.bucket_name}/{video_id}.mp4"
+        if not video_id.endswith('.mp4'):
+            video_id = f"{video_id}.mp4"
+        return f"gs://{self.bucket_name}/{video_id}"
     
     def get_signed_url(self, video_id: str, expiration_hours: int = 24) -> str:
         blob_name = f"{video_id}.mp4"

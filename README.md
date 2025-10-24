@@ -44,6 +44,7 @@ Then open `frontend/index.html` in browser.
 ## Documentation
 
 - **[CLAUDE.md](CLAUDE.md)** - Project instructions and guidance for Claude Code
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide for Google Cloud Run
 - **[tests/README.md](tests/README.md)** - Test suite documentation and usage
 
 ## Key Features
@@ -211,13 +212,23 @@ This is a **hackathon MVP**. Completed features:
 - Precise video timestamps with automatic extraction
 - Clean, simple UI
 - Comprehensive test suite
+- **Cloud Run deployment** - Ready for production deployment
 
 Not included in MVP:
 - Real-time ingestion
 - Multi-camera support
 - Authentication
-- Production deployment
 - Scale testing
+
+## Deployment
+
+Deploy to Google Cloud Run in minutes:
+
+```bash
+./deploy.sh
+```
+
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** for complete deployment instructions, security configurations, and troubleshooting.
 
 ## Testing
 
@@ -270,10 +281,9 @@ MIT
 ## Contributing
 
 This is a hackathon project. For production use:
-- Add authentication
+- Add authentication (see DEPLOYMENT.md for security guidance)
 - Implement rate limiting
 - Add comprehensive error handling
-- Set up monitoring
-- Deploy to Cloud Run
+- Set up monitoring and alerting
 - Expand test coverage for edge cases
 

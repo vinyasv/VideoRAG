@@ -4,6 +4,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 import asyncio
 import subprocess
@@ -44,6 +46,27 @@ async def root():
 
 @app.get("/video/{video_id}")
 async def get_video_url(video_id: str):
+    # First try to serve from local videos directory (for Cloud Run deployment)
+    videos_dir = Path(__file__).parent.parent / "frontend" / "videos"
+
+    # Strip .mp4 extension if present
+    video_id_base = video_id.replace('.mp4', '')
+
+    # Try compressed version first (for bundled videos in container)
+    compressed_filename = f"{video_id_base}_compressed.mp4"
+    compressed_path = videos_dir / compressed_filename
+
+    if compressed_path.exists():
+        return {"url": f"/videos/{compressed_filename}"}
+
+    # Try exact filename
+    exact_filename = f"{video_id_base}.mp4"
+    exact_path = videos_dir / exact_filename
+
+    if exact_path.exists():
+        return {"url": f"/videos/{exact_filename}"}
+
+    # Fallback to GCS signed URL for local development
     try:
         signed_url = gcs_client.get_signed_url(video_id)
         return {"url": signed_url}
@@ -98,6 +121,28 @@ async def ask_question(request: QueryRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+# Mount static files for frontend
+frontend_dir = Path(__file__).parent.parent / "frontend"
+if frontend_dir.exists():
+    app.mount("/assets", StaticFiles(directory=str(frontend_dir / "assets")), name="assets")
+
+    # Mount videos directory for serving video files
+    videos_dir = frontend_dir / "videos"
+    if videos_dir.exists():
+        app.mount("/videos", StaticFiles(directory=str(videos_dir)), name="videos")
+
+    @app.get("/app")
+    async def serve_frontend():
+        return FileResponse(str(frontend_dir / "index.html"))
+
+    @app.get("/app.js")
+    async def serve_js():
+        return FileResponse(str(frontend_dir / "app.js"))
+
+    @app.get("/styles.css")
+    async def serve_css():
+        return FileResponse(str(frontend_dir / "styles.css"))
 
 if __name__ == "__main__":
     import uvicorn
