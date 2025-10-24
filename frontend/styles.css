@@ -12,6 +12,8 @@ html, body {
 }
 
 .container {
+    max-width: 1280px;
+    margin: 0 auto;
     width: 100%;
     height: 100vh;
     padding: 30px 60px;
@@ -123,7 +125,6 @@ video {
 .chat-section {
     width: 320px;
     height: 100%;
-    max-height: calc(100vh - 200px);
     background: transparent;
     border: 1px solid #E2E8F0;
     position: relative;
@@ -132,9 +133,19 @@ video {
     flex-direction: column;
 }
 
+.chat-history {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
 .chat-empty-state {
     flex: 1;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     padding: 24px;
@@ -151,15 +162,6 @@ video {
     color: rgba(0, 0, 0, 0.6);
     line-height: 1.6;
     margin: 0;
-}
-
-.chat-history {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
 }
 
 .message {
@@ -219,12 +221,13 @@ video {
 /* Chat Input */
 .chat-input-container {
     padding: 16px;
-    border-top: none;
+    border-top: 1px solid #E2E8F0;
     display: flex;
     align-items: center;
     background: transparent;
     flex-shrink: 0;
     position: relative;
+    width: 100%;
 }
 
 #queryInput {

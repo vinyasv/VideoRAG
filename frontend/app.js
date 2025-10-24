@@ -1,4 +1,6 @@
-const API_URL = 'http://localhost:8000';
+const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:8000'
+    : window.location.origin;
 
 const videoPlayer = document.getElementById('mainVideo');
 const queryInput = document.getElementById('queryInput');
@@ -165,15 +167,15 @@ function switchVideo(card) {
     if (card.classList.contains('upload-card') || card.classList.contains('processing')) {
         return;
     }
-    
+
     const videoId = card.dataset.videoId;
     const videoTitle = card.dataset.title;
-    
+
     document.querySelectorAll('.video-card').forEach(c => c.classList.remove('active'));
     card.classList.add('active');
-    
+
     currentVideoId = videoId;
-    
+
     // Get signed URL from backend
     fetch(`${API_URL}/video/${videoId}`)
         .then(response => response.json())
@@ -181,9 +183,17 @@ function switchVideo(card) {
             const source = videoPlayer.querySelector('source');
             source.src = data.url;
             videoPlayer.load();
-            
+
             document.getElementById('videoTitle').textContent = videoTitle;
-            chatHistory.innerHTML = '';
+
+            // Clear chat and show empty state
+            const messages = chatHistory.querySelectorAll('.message, .clips-container, .loading');
+            messages.forEach(msg => msg.remove());
+
+            const chatEmptyState = document.getElementById('chatEmptyState');
+            if (chatEmptyState) {
+                chatEmptyState.classList.remove('hidden');
+            }
         })
         .catch(error => {
             console.error('Failed to load video:', error);
@@ -192,9 +202,17 @@ function switchVideo(card) {
             const source = videoPlayer.querySelector('source');
             source.src = videoSrc;
             videoPlayer.load();
-            
+
             document.getElementById('videoTitle').textContent = videoTitle;
-            chatHistory.innerHTML = '';
+
+            // Clear chat and show empty state
+            const messages = chatHistory.querySelectorAll('.message, .clips-container, .loading');
+            messages.forEach(msg => msg.remove());
+
+            const chatEmptyState = document.getElementById('chatEmptyState');
+            if (chatEmptyState) {
+                chatEmptyState.classList.remove('hidden');
+            }
         });
 }
 
