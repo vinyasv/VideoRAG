@@ -19,7 +19,7 @@ class GCSClient:
         else:
             self.client = storage.Client(project=settings.PROJECT_ID)
         
-        self.bucket_name = f"{settings.PROJECT_ID}-sentinel-videos"
+        self.bucket_name = f"{settings.PROJECT_ID}-sentinel-videos-public"
         self.bucket = self._get_or_create_bucket()
     
     def _get_or_create_bucket(self):

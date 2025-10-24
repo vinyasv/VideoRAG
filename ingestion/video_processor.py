@@ -5,6 +5,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from google.cloud import videointelligence_v1 as videointelligence
+from vertexai.generative_models import GenerativeModel
+import asyncio
 from vertexai.vision_models import MultiModalEmbeddingModel, Video, VideoSegmentConfig
 import vertexai
 from config import settings
@@ -78,7 +80,7 @@ class VideoProcessor:
                 self._fix_timestamps_recursively(item)
         return data
 
-    def analyze_video(self, video_uri):
+    async def analyze_video(self, video_uri):
         gcs_uri = self._upload_to_gcs_if_local(video_uri)
         features = [
             videointelligence.Feature.LABEL_DETECTION,
@@ -149,7 +151,11 @@ class VideoProcessor:
 
 
         metadata = self._extract_metadata(annotation_result.annotation_results[0])
-        return metadata, gcs_uri
+
+        # Generate the video summary
+        summary = await self._generate_video_summary(metadata)
+
+        return metadata, gcs_uri, summary
 
     def _extract_metadata(self, annotation_result):
         labels_by_time = {}
@@ -195,6 +201,45 @@ class VideoProcessor:
             'ocr_by_time': {k: ' '.join(v) for k, v in ocr_by_time.items()},
             'objects_by_time': objects_by_time
         }
+
+    async def _generate_video_summary(self, metadata):
+        """Generates a concise summary of the video from its metadata."""
+        print("  📝 Generating video summary...")
+
+        # Consolidate all unique labels and object descriptions
+        all_labels = set()
+        for labels in metadata['labels_by_time'].values():
+            all_labels.update(labels)
+
+        all_objects = set()
+        for objects_at_time in metadata['objects_by_time'].values():
+            for obj in objects_at_time:
+                all_objects.add(obj['description'])
+
+        # Combine and deduplicate
+        combined_keywords = list(all_labels.union(all_objects))
+
+        if not combined_keywords:
+            print("  ⚠️ No keywords found to generate a summary.")
+            return "No descriptive summary could be generated for this video."
+
+        # Create the prompt for the LLM
+        prompt = f"""Based on the following keywords and objects detected in a video, please generate a concise, 3-4 line narrative summary of what the video is likely about.
+        Focus on the most significant or recurring themes.
+
+        Keywords: {', '.join(combined_keywords)}
+
+        Summary:"""
+
+        try:
+            gemini_model = GenerativeModel(settings.GEMINI_MODEL)
+            response = await gemini_model.generate_content_async(prompt)
+            summary = response.text.strip()
+            print(f"  ✓ Summary generated successfully.")
+            return summary
+        except Exception as e:
+            print(f"  ❌ Error generating video summary: {e}")
+            return "Summary generation failed."
     
     def create_chunks(self, video_duration_sec):
         chunks = []

@@ -7,7 +7,30 @@ import asyncio
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_streaming_bulk
 from config import settings
+import json
 from ingestion.video_processor import VideoProcessor
+
+def update_video_summary(video_id, summary):
+    """Reads, updates, and writes the video summaries JSON file."""
+    summary_file = Path(__file__).parent.parent / 'video_summaries.json'
+    summaries = {}
+
+    # Read existing summaries if the file exists
+    if summary_file.exists():
+        with open(summary_file, 'r') as f:
+            try:
+                summaries = json.load(f)
+            except json.JSONDecodeError:
+                print(f"⚠️ Warning: Could not decode {summary_file}. Starting fresh.")
+
+    # Update the summary for the current video
+    summaries[video_id] = summary
+
+    # Write the updated summaries back to the file
+    with open(summary_file, 'w') as f:
+        json.dump(summaries, f, indent=4)
+    print(f"✓ Video summary saved to {summary_file}")
+
 
 async def index_documents_async(es_client, documents):
     """Index documents using async bulk operations with progress tracking"""
@@ -50,7 +73,7 @@ async def main_async():
         processor = VideoProcessor()
 
         print("\n[1/4] Analyzing video with Video Intelligence API...")
-        metadata, gcs_uri = processor.analyze_video(args.video_path)
+        metadata, gcs_uri, summary = await processor.analyze_video(args.video_path)
         print(f"✓ Found {len(metadata['labels_by_time'])} seconds with labels")
         print(f"✓ Found {len(metadata['ocr_by_time'])} seconds with OCR text")
 
@@ -89,6 +112,9 @@ async def main_async():
         
         print(f"\n✅ Ingestion complete for {args.video_id}")
         print(f"Total segments indexed: {len(documents)}")
+
+        # Save the generated summary
+        update_video_summary(args.video_id, summary)
         
     except Exception as e:
         print(f"\n❌ Ingestion failed: {str(e)}")

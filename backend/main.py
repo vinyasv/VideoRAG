@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
 import subprocess
+import json
 from datetime import datetime
 
 from backend.models import QueryRequest, QueryResponse, VideoClip
@@ -49,68 +50,6 @@ async def get_video_url(video_id: str):
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"Video not found: {str(e)}")
 
-@app.post("/upload")
-async def upload_video(
-    video: UploadFile = File(...),
-    video_id: str = Form(...)
-):
-    try:
-        video_data = await video.read()
-        
-        gcs_uri = gcs_client.upload_video(video_data, video_id, video.filename)
-        
-        asyncio.create_task(process_video_async(gcs_uri, video_id))
-        
-        return {"status": "success", "video_id": video_id, "gcs_uri": gcs_uri}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
-
-async def process_video_async(gcs_uri: str, video_id: str):
-    try:
-        await asyncio.sleep(1)
-        
-        log_file = Path(__file__).parent.parent / 'ingestion_log.txt'
-        start_msg = f"[{datetime.now().isoformat()}] START ingestion for {video_id} ({gcs_uri})\n"
-        with log_file.open('a') as lf:
-            lf.write(start_msg)
-        
-        process = await asyncio.create_subprocess_exec(
-            'python', 'ingestion/ingest.py',
-            '--video-path', gcs_uri,
-            '--video-id', video_id,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        
-        stdout, stderr = await process.communicate()
-        
-        log_lines = []
-        if stdout:
-            log_lines.append(stdout.decode())
-        if stderr:
-            log_lines.append(stderr.decode())
-        status = 'SUCCEEDED' if process.returncode == 0 else 'FAILED'
-        end_msg = f"[{datetime.now().isoformat()}] END ingestion for {video_id} - {status} (rc={process.returncode})\n\n"
-        
-        with log_file.open('a') as lf:
-            for line in log_lines:
-                lf.write(line)
-            lf.write(end_msg)
-        
-        if process.returncode != 0:
-            print(f"Ingestion failed for {video_id}: {stderr.decode()}")
-        else:
-            print(f"Successfully ingested {video_id}")
-            
-    except Exception as e:
-        print(f"Error processing video {video_id}: {str(e)}")
-        try:
-            log_file = Path(__file__).parent.parent / 'ingestion_log.txt'
-            with log_file.open('a') as lf:
-                lf.write(f"[{datetime.now().isoformat()}] ERROR ingestion for {video_id}: {str(e)}\n\n")
-        except Exception:
-            pass
 
 @app.post("/ask", response_model=QueryResponse)
 async def ask_question(request: QueryRequest):
@@ -129,14 +68,17 @@ async def ask_question(request: QueryRequest):
             top_k=5
         )
         
-        if not search_results:
-            raise HTTPException(
-                status_code=404,
-                detail="No relevant video clips found for your query"
-            )
-        
+
+        # Load video summary
+        summary_file = Path(__file__).parent.parent / 'video_summaries.json'
+        video_summary = "No summary available."
+        if summary_file.exists():
+            with open(summary_file, 'r') as f:
+                summaries = json.load(f)
+                video_summary = summaries.get(request.video_id, "No summary available for this video.")
+
         answer = await vertex_ai_client.synthesize_answer(
-            query_text, search_results, request.video_id
+            query_text, search_results, request.video_id, video_summary
         )
         
         clips = [

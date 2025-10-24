@@ -4,7 +4,7 @@ const videoPlayer = document.getElementById('mainVideo');
 const queryInput = document.getElementById('queryInput');
 const sendBtn = document.getElementById('sendBtn');
 const chatHistory = document.getElementById('chatHistory');
-let currentVideoId = 'test_video';
+let currentVideoId = 'normal_video_1';
 
 function formatTime(seconds) {
     const mins = Math.floor(seconds / 60);
@@ -132,11 +132,27 @@ videoPlayer.addEventListener('loadedmetadata', () => {
 });
 
 function loadThumbnails() {
-    document.querySelectorAll('.video-thumbnail').forEach(thumb => {
-        thumb.addEventListener('loadeddata', function() {
-            this.currentTime = 5;
-        });
-        thumb.load();
+    document.querySelectorAll('.video-card').forEach(card => {
+        const videoId = card.dataset.videoId;
+        if (!videoId) return;
+
+        // Fetch signed URL for thumbnail
+        fetch(`${API_URL}/video/${videoId}`)
+            .then(response => response.json())
+            .then(data => {
+                const thumb = card.querySelector('.video-thumbnail');
+                if (thumb) {
+                    const source = thumb.querySelector('source');
+                    source.src = data.url;
+                    thumb.load();
+                    thumb.addEventListener('loadeddata', function() {
+                        this.currentTime = 5;
+                    }, { once: true });
+                }
+            })
+            .catch(error => {
+                console.error(`Failed to load thumbnail for ${videoId}:`, error);
+            });
     });
 }
 
@@ -177,76 +193,18 @@ function switchVideo(card) {
         });
 }
 
-document.querySelectorAll('.video-card:not(.upload-card)').forEach(card => {
+document.querySelectorAll('.video-card').forEach(card => {
     card.addEventListener('click', () => switchVideo(card));
 });
 
-document.getElementById('uploadCard').addEventListener('click', () => {
-    document.getElementById('videoUpload').click();
-});
 
-document.getElementById('videoUpload').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    const videoId = 'video_' + Date.now();
-    const videoURL = URL.createObjectURL(file);
-    
-    const newCard = document.createElement('div');
-    newCard.className = 'video-card processing';
-    newCard.dataset.videoId = videoId;
-    newCard.dataset.src = videoURL;
-    newCard.dataset.title = file.name.replace(/\.[^/.]+$/, '');
-    
-    newCard.innerHTML = `
-        <video class="video-thumbnail" muted>
-            <source src="${videoURL}" type="video/mp4">
-        </video>
-        <div class="video-card-info">
-            <span class="video-card-title">${file.name.replace(/\.[^/.]+$/, '')}</span>
-            <span class="video-card-duration">...</span>
-        </div>
-    `;
-    
-    const uploadCard = document.getElementById('uploadCard');
-    uploadCard.parentNode.insertBefore(newCard, uploadCard);
-    
-    const thumb = newCard.querySelector('.video-thumbnail');
-    thumb.addEventListener('loadeddata', function() {
-        this.currentTime = 5;
-        const duration = Math.floor(this.duration);
-        const mins = Math.floor(duration / 60);
-        const secs = duration % 60;
-        newCard.querySelector('.video-card-duration').textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
-    });
-    thumb.load();
-    
-    try {
-        const formData = new FormData();
-        formData.append('video', file);
-        formData.append('video_id', videoId);
-        
-        const response = await fetch(`${API_URL}/upload`, {
-            method: 'POST',
-            body: formData
-        });
-        
-        if (!response.ok) {
-            throw new Error('Upload failed');
-        }
-        
-        newCard.classList.remove('processing');
-        newCard.addEventListener('click', () => switchVideo(newCard));
-        
-    } catch (error) {
-        console.error('Upload error:', error);
-        newCard.remove();
-        alert('Upload failed: ' + error.message);
+
+document.addEventListener('DOMContentLoaded', () => {
+    const activeCard = document.querySelector('.video-card');
+    if (activeCard) {
+        switchVideo(activeCard);
     }
-    
-    e.target.value = '';
+    loadThumbnails();
 });
-
-loadThumbnails();
 queryInput.focus();
 

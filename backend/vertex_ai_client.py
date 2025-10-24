@@ -22,9 +22,15 @@ class VertexAIClient:
         # In a real application, you might use a dedicated embedding model.
         pass
 
-    async def synthesize_answer(self, query: str, search_results: list, video_id: str) -> str:
+    async def synthesize_answer(self, query: str, search_results: list, video_id: str, video_summary: str) -> str:
         if not search_results:
-            return "No relevant clips found for your query."
+            # Handle case where no clips are found by sending a specific prompt to the LLM
+            prompt = f"""You are an expert security analyst. A user asked a question about a video, but the search system could not find any relevant video clips.
+            Your task is to inform the user that no relevant footage was found for their specific query and suggest they try rephrasing their question or asking about a different event.
+            The user's original query was: "{query}"
+            """
+            response = await self.gemini_model.generate_content_async(prompt)
+            return response.text
 
         timestamps = [
             {"start_time_sec": r['_source']['start_time_sec'], "end_time_sec": r['_source']['end_time_sec']}
@@ -43,12 +49,19 @@ class VertexAIClient:
             # 2. Build the multimodal prompt
             prompt_parts = [
                 f"""You are an expert security analyst. A user is asking a question about a video.
-                Your task is to answer their question based *only* on the short video clips provided.
+
+                First, here is a high-level summary of the entire video for context:
+                ---
+                {video_summary}
+                ---
+
+                Now, using that summary for context, your main task is to answer the user's specific query. Base all your factual claims *only* on the short video clips provided below.
                 The user's query is: "{query}"
 
                 Analyze the following video clips and provide a concise, factual answer.
                 For every claim you make, you MUST state which clip it is based on (e.g., "In Clip 1, a person is seen...").
                 If the clips do not contain enough information, state that clearly.
+                Finally, provide a concluding sentence that connects your clip analysis to the overall video summary.
                 """
             ]
 
