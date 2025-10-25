@@ -17,58 +17,67 @@
         
         <div class="content">
             <div class="video-section">
-                <h2 id="videoTitle">Fire Response Video</h2>
-
-                <div class="video-container">
-                    <video id="mainVideo" controls controlsList="nodownload" preload="metadata">
-                        <source src="" type="video/mp4">
-                        Your browser does not support the video tag.
-                    </video>
-                </div>
-
-                <div class="video-carousel">
-                    <div class="video-card active" data-video-id="fire2" data-title="Fire Response Video">
+                <div class="video-gallery">
+                    <div class="video-card active main-video" data-video-id="fire2" data-title="Fire Response Video">
+                        <div class="video-container">
+                            <video id="mainVideo" controls controlsList="nodownload" preload="metadata">
+                                <source src="" type="video/mp4">
+                                Your browser does not support the video tag.
+                            </video>
+                        </div>
+                        <span class="video-card-title">ABCDdaidbninisbaibniis</span>
+                    </div>
+                    <div class="video-card" data-video-id="fire2" data-title="Fire Response Video">
                         <video class="video-thumbnail" muted>
                             <source src="" type="video/mp4">
                         </video>
-                        <div class="video-card-info">
-                            <span class="video-card-title">Fire Response - 4:07 Min</span>
-                        </div>
+                        <span class="video-card-title">Video Name</span>
                     </div>
                     <div class="video-card" data-video-id="burglars_new" data-title="Burglary Attempt Video">
                         <video class="video-thumbnail" muted>
                             <source src="" type="video/mp4">
                         </video>
-                        <div class="video-card-info">
-                            <span class="video-card-title">Burglary Attempt - 2:51 Min</span>
-                        </div>
+                        <span class="video-card-title">Video Name</span>
                     </div>
                 </div>
             </div>
-            
-            <div class="chat-section">
-                <div class="chat-history" id="chatHistory">
-                    <div class="chat-empty-state" id="chatEmptyState">
-                        <p>Ask Questions about what happened in the video or when they happened</p>
+
+            <div class="chat-section empty">
+                <div class="chat-history" id="chatHistory"></div>
+
+                <div class="chat-intro-container" id="chatIntroContainer">
+                    <p class="chat-intro-text">Ask Questions about what happened in the video or when they happened</p>
+                    <div class="chat-input-container">
+                        <input
+                            type="text"
+                            id="queryInput"
+                            placeholder="Ask a question about this video"
+                            autocomplete="off"
+                        >
+                        <button id="sendBtn">
+                            <img src="assets/send-icon.svg" alt="Send" width="17.7" height="17.93">
+                        </button>
+                    </div>
+                    <div class="detailed-analysis-toggle">
+                        <label>
+                            <input type="checkbox" id="useVideoClips">
+                            <span class="toggle-text">Detailed Analysis</span>
+                        </label>
                     </div>
                 </div>
 
-                <div class="detailed-analysis-toggle">
-                    <label>
-                        <input type="checkbox" id="useVideoClips">
-                        <span class="toggle-text">Detailed Analysis (slower, uses video clips)</span>
-                    </label>
-                </div>
-                <div class="chat-input-container">
-                    <input
-                        type="text"
-                        id="queryInput"
-                        placeholder="Ask a question about this video"
-                        autocomplete="off"
-                    >
-                    <button id="sendBtn">
-                        <img src="assets/send-icon.svg" alt="Send" width="17.7" height="17.93">
-                    </button>
+                <div class="chat-bottom-container" id="chatBottomContainer">
+                    <div class="chat-input-container">
+                        <input
+                            type="text"
+                            id="queryInputBottom"
+                            placeholder="Ask a question about this video"
+                            autocomplete="off"
+                        >
+                        <button id="sendBtnBottom">
+                            <img src="assets/send-icon.svg" alt="Send" width="17.7" height="17.93">
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

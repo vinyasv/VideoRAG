@@ -4,22 +4,24 @@ const API_URL = window.location.hostname === 'localhost' || window.location.host
 
 const videoPlayer = document.getElementById('mainVideo');
 const queryInput = document.getElementById('queryInput');
+const queryInputBottom = document.getElementById('queryInputBottom');
 const sendBtn = document.getElementById('sendBtn');
+const sendBtnBottom = document.getElementById('sendBtnBottom');
 const chatHistory = document.getElementById('chatHistory');
-let currentVideoId = 'fire2';
+const chatSection = document.querySelector('.chat-section');
+let currentVideoId;
 
 function formatTime(seconds) {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function activateChatMode() {
+    chatSection.classList.remove('empty');
 }
 
 function appendMessage(role, text) {
-    const chatEmptyState = document.getElementById('chatEmptyState');
-    if (chatEmptyState) {
-        chatEmptyState.classList.add('hidden');
-    }
-    
     const msg = document.createElement('div');
     msg.className = `message ${role}`;
     msg.textContent = text;
@@ -30,22 +32,22 @@ function appendMessage(role, text) {
 function displayClips(clips) {
     const container = document.createElement('div');
     container.className = 'clips-container';
-    
+
     clips.forEach((clip, index) => {
         const btn = document.createElement('button');
         btn.className = 'clip-button';
-        btn.textContent = `Clip ${index + 1}: ${formatTime(clip.start_time_sec)} - ${formatTime(clip.end_time_sec)}`;
+        btn.textContent = `Clip ${index + 1} : ${formatTime(clip.start_time_sec)}-${formatTime(clip.end_time_sec)}`;
         btn.onclick = () => playClip(clip.start_time_sec);
         container.appendChild(btn);
     });
-    
+
     chatHistory.appendChild(container);
     chatHistory.scrollTop = chatHistory.scrollHeight;
 }
 
 function playClip(startTime) {
     console.log('playClip called with startTime:', startTime);
-    
+
     if (videoPlayer.readyState < 1) {
         console.log('Video not ready, waiting for loadedmetadata');
         videoPlayer.addEventListener('loadedmetadata', () => {
@@ -53,18 +55,18 @@ function playClip(startTime) {
         }, { once: true });
         return;
     }
-    
+
     videoPlayer.pause();
     console.log('Setting currentTime to:', startTime);
     videoPlayer.currentTime = startTime;
-    
+
     const onSeeked = () => {
         console.log('Seeked complete, currentTime is now:', videoPlayer.currentTime);
         videoPlayer.play().catch(err => {
             console.error('Play failed:', err);
         });
     };
-    
+
     videoPlayer.addEventListener('seeked', onSeeked, { once: true });
 }
 
@@ -84,18 +86,37 @@ function hideLoading() {
     }
 }
 
+function getActiveInput() {
+    return chatSection.classList.contains('empty') ? queryInput : queryInputBottom;
+}
+
+function getActiveButton() {
+    return chatSection.classList.contains('empty') ? sendBtn : sendBtnBottom;
+}
+
 async function askQuestion() {
-    const query = queryInput.value.trim();
+    const activeInput = getActiveInput();
+    const activeButton = getActiveButton();
+    const query = activeInput.value.trim();
     if (!query) return;
 
     const useVideoClips = document.getElementById('useVideoClips').checked;
+
+    // Activate chat mode if in empty state
+    if (chatSection.classList.contains('empty')) {
+        activateChatMode();
+    }
 
     appendMessage('user', query);
     if (useVideoClips) {
         appendMessage('system', '🎬 Using detailed analysis mode (processing video clips)');
     }
-    queryInput.value = '';
-    sendBtn.disabled = true;
+    activeInput.value = '';
+    activeButton.disabled = true;
+
+    // Update the bottom input reference after state change
+    const bottomInput = document.getElementById('queryInputBottom');
+    const bottomButton = document.getElementById('sendBtnBottom');
 
     showLoading();
 
@@ -105,36 +126,45 @@ async function askQuestion() {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({query, video_id: currentVideoId, use_video_clips: useVideoClips})
         });
-        
+
         hideLoading();
-        
+
         if (!response.ok) {
             const error = await response.json();
             appendMessage('error', error.detail || 'Failed to get response');
             return;
         }
-        
+
         const data = await response.json();
-        
+
         appendMessage('assistant', data.answer);
-        
+
         if (data.clips && data.clips.length > 0) {
             displayClips(data.clips);
         }
-        
+
     } catch (error) {
         hideLoading();
         appendMessage('error', 'Network error: ' + error.message);
     } finally {
-        sendBtn.disabled = false;
-        queryInput.focus();
+        if (bottomButton) {
+            bottomButton.disabled = false;
+            bottomInput.focus();
+        }
     }
 }
 
 sendBtn.addEventListener('click', askQuestion);
+sendBtnBottom.addEventListener('click', askQuestion);
 
 queryInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter' && !sendBtn.disabled) {
+        askQuestion();
+    }
+});
+
+queryInputBottom.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && !sendBtnBottom.disabled) {
         askQuestion();
     }
 });
@@ -144,11 +174,10 @@ videoPlayer.addEventListener('loadedmetadata', () => {
 });
 
 function loadThumbnails() {
-    document.querySelectorAll('.video-card').forEach(card => {
+    document.querySelectorAll('.video-card:not(.main-video)').forEach(card => {
         const videoId = card.dataset.videoId;
         if (!videoId) return;
 
-        // Fetch signed URL for thumbnail
         fetch(`${API_URL}/video/${videoId}`)
             .then(response => response.json())
             .then(data => {
@@ -189,35 +218,23 @@ function switchVideo(card) {
             source.src = data.url;
             videoPlayer.load();
 
-            document.getElementById('videoTitle').textContent = videoTitle;
-
-            // Clear chat and show empty state
-            const messages = chatHistory.querySelectorAll('.message, .clips-container, .loading');
-            messages.forEach(msg => msg.remove());
-
-            const chatEmptyState = document.getElementById('chatEmptyState');
-            if (chatEmptyState) {
-                chatEmptyState.classList.remove('hidden');
+            // Update video title
+            const mainVideoCard = document.querySelector('.video-card.main-video');
+            const titleElement = mainVideoCard.querySelector('.video-card-title');
+            if (titleElement) {
+                titleElement.textContent = videoTitle;
             }
+
+            // Clear chat and reset to empty state
+            chatHistory.innerHTML = '';
+            chatSection.classList.add('empty');
+
+            // Clear both inputs
+            queryInput.value = '';
+            queryInputBottom.value = '';
         })
         .catch(error => {
             console.error('Failed to load video:', error);
-            // Fallback to local file
-            const videoSrc = card.dataset.src;
-            const source = videoPlayer.querySelector('source');
-            source.src = videoSrc;
-            videoPlayer.load();
-
-            document.getElementById('videoTitle').textContent = videoTitle;
-
-            // Clear chat and show empty state
-            const messages = chatHistory.querySelectorAll('.message, .clips-container, .loading');
-            messages.forEach(msg => msg.remove());
-
-            const chatEmptyState = document.getElementById('chatEmptyState');
-            if (chatEmptyState) {
-                chatEmptyState.classList.remove('hidden');
-            }
         });
 }
 
@@ -225,14 +242,25 @@ document.querySelectorAll('.video-card').forEach(card => {
     card.addEventListener('click', () => switchVideo(card));
 });
 
-
-
 document.addEventListener('DOMContentLoaded', () => {
-    const activeCard = document.querySelector('.video-card');
+    const activeCard = document.querySelector('.video-card.main-video');
     if (activeCard) {
-        switchVideo(activeCard);
+        const videoId = activeCard.dataset.videoId;
+        currentVideoId = videoId;
+
+        // Load the main video
+        fetch(`${API_URL}/video/${videoId}`)
+            .then(response => response.json())
+            .then(data => {
+                const source = videoPlayer.querySelector('source');
+                source.src = data.url;
+                videoPlayer.load();
+            })
+            .catch(error => {
+                console.error('Failed to load main video:', error);
+            });
     }
     loadThumbnails();
 });
-queryInput.focus();
 
+queryInput.focus();

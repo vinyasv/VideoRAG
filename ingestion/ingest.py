@@ -9,27 +9,49 @@ from elasticsearch.helpers import async_streaming_bulk
 from config import settings
 import json
 from ingestion.video_processor import VideoProcessor
+import os
+import time
 
 def update_video_summary(video_id, summary):
-    """Reads, updates, and writes the video summaries JSON file."""
+    """Reads, updates, and writes the video summaries JSON file with file locking."""
     summary_file = Path(__file__).parent.parent / 'video_summaries.json'
+    lock_dir = Path(__file__).parent.parent / 'video_summaries.json.lock'
     summaries = {}
 
-    # Read existing summaries if the file exists
-    if summary_file.exists():
-        with open(summary_file, 'r') as f:
-            try:
-                summaries = json.load(f)
-            except json.JSONDecodeError:
-                print(f"⚠️ Warning: Could not decode {summary_file}. Starting fresh.")
+    # Acquire lock
+    retries = 10
+    retry_delay = 1 # second
+    for i in range(retries):
+        try:
+            os.mkdir(lock_dir)
+            break
+        except FileExistsError:
+            if i < retries - 1:
+                print(f"Waiting for summary file lock... (attempt {i+1}/{retries})")
+                time.sleep(retry_delay)
+            else:
+                print("Could not acquire lock. Aborting summary update.")
+                return
 
-    # Update the summary for the current video
-    summaries[video_id] = summary
+    try:
+        # Read existing summaries if the file exists
+        if summary_file.exists():
+            with open(summary_file, 'r') as f:
+                try:
+                    summaries = json.load(f)
+                except json.JSONDecodeError:
+                    print(f"⚠️ Warning: Could not decode {summary_file}. Starting fresh.")
 
-    # Write the updated summaries back to the file
-    with open(summary_file, 'w') as f:
-        json.dump(summaries, f, indent=4)
-    print(f"✓ Video summary saved to {summary_file}")
+        # Update the summary for the current video
+        summaries[video_id] = summary
+
+        # Write the updated summaries back to the file
+        with open(summary_file, 'w') as f:
+            json.dump(summaries, f, indent=4)
+        print(f"✓ Video summary saved to {summary_file}")
+    finally:
+        # Release lock
+        os.rmdir(lock_dir)
 
 
 async def index_documents_async(es_client, documents):

@@ -55,6 +55,10 @@ IMPORTANT: This is a TEMPORAL query asking about WHEN something happened.
         context_parts = []
         context_parts.append(f"""You are an expert security analyst analyzing security footage.
 {temporal_instructions}
+Your first and most important task is to determine if the provided metadata segments are relevant to the user's query.
+- If they are relevant, answer the user's query based *only* on the information in the segments.
+- If they are NOT relevant, you MUST state that the search results do not contain the requested information. DO NOT try to answer the query with irrelevant data.
+
 First, here is a high-level summary of the entire video for context:
 ---
 {video_summary}
@@ -125,6 +129,10 @@ IMPORTANT: This is a TEMPORAL query asking about WHEN something happened.
             prompt_parts = [
                 f"""You are an expert security analyst analyzing security footage.
 {temporal_instructions}
+Your first and most important task is to determine if the provided video clips are relevant to the user's query.
+- If they are relevant, answer the user's query based *only* on what is visible in the clips.
+- If they are NOT relevant, you MUST state that the provided clips do not contain the requested information. DO NOT try to answer the query with irrelevant footage.
+
 First, here is a high-level summary of the entire video for context:
 ---
 {video_summary}

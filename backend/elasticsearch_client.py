@@ -13,9 +13,10 @@ class ElasticsearchClient:
             request_timeout=30,
             max_retries=3
         )
-    
-    async def hybrid_search(self, query_embedding: list[float] | None, query_text: str, video_id: str | None = None, top_k: int = 5):
-        base_query = {
+
+    def _build_text_query(self, query_text: str):
+        """Builds the text-based search part of the query."""
+        return {
             "bool": {
                 "should": [
                     {
@@ -39,17 +40,17 @@ class ElasticsearchClient:
             }
         }
 
-        if video_id:
-            query = {
-                "bool": {
-                    "must": [base_query],
-                    "filter": [{"term": {"video_id": video_id}}]
-                }
-            }
-        else:
-            query = base_query
+    async def hybrid_search(self, query_embedding: list[float] | None, query_text: str, video_id: str | None = None, top_k: int = 5):
+        text_query = self._build_text_query(query_text)
 
-        # Only use vector search if embedding is available
+        query = {
+            "bool": {
+                "must": [text_query]
+            }
+        }
+        if video_id:
+            query["bool"]["filter"] = [{"term": {"video_id": video_id}}]
+
         if query_embedding is not None:
             print(f"🔍 Using HYBRID search (vector + text) for query: '{query_text}'")
             knn_config = {
@@ -60,7 +61,7 @@ class ElasticsearchClient:
             }
 
             if video_id:
-                knn_config["filter"] = [{"term": {"video_id": video_id}}]
+                knn_config["filter"] = {"term": {"video_id": video_id}}
 
             try:
                 response = await self.client.search(
@@ -71,13 +72,11 @@ class ElasticsearchClient:
                     _source=["video_id", "start_time_sec", "end_time_sec", "labels", "ocr_text", "objects", "clip_uri"]
                 )
                 print(f"   ✅ Hybrid search successful, found {len(response['hits']['hits'])} results")
-                normalized_results = self._normalize_scores(response['hits']['hits'])
-                return normalized_results
+                return self._normalize_scores(response['hits']['hits'])
             except Exception as e:
                 print(f"⚠️ Warning: Vector search failed: {e}")
                 print("   Falling back to text-only search")
 
-        # Text-only search (used when no embedding or vector search fails)
         print(f"📝 Using TEXT-ONLY search for query: '{query_text}'")
         response = await self.client.search(
             index=settings.VIDEO_INDEX_NAME,
@@ -86,13 +85,11 @@ class ElasticsearchClient:
             _source=["video_id", "start_time_sec", "end_time_sec", "labels", "ocr_text", "objects", "clip_uri"]
         )
         print(f"   ✅ Text search successful, found {len(response['hits']['hits'])} results")
-        normalized_results = self._normalize_scores(response['hits']['hits'])
-        return normalized_results
-    
+        return self._normalize_scores(response['hits']['hits'])
+
     def _normalize_scores(self, search_results: list) -> list:
         """
         Normalize scores to 0-1 range for consistent comparison across queries.
-
         This addresses the issue where hybrid search combines bounded KNN scores (0-1)
         with unbounded BM25 text scores, leading to high variance (0.5 to 18+).
         """
@@ -103,7 +100,6 @@ class ElasticsearchClient:
         min_score = min(scores)
         max_score = max(scores)
 
-        # Avoid division by zero
         score_range = max_score - min_score
         if score_range == 0:
             for hit in search_results:
@@ -111,15 +107,13 @@ class ElasticsearchClient:
                 hit['_original_score'] = hit['_score']
             return search_results
 
-        # Min-max normalization to 0-1
         for hit in search_results:
             original = hit['_score']
             normalized = (original - min_score) / score_range
             hit['_normalized_score'] = normalized
-            hit['_original_score'] = original  # Keep for debugging
+            hit['_original_score'] = original
 
         return search_results
 
     async def close(self):
         await self.client.close()
-

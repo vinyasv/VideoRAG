@@ -94,6 +94,24 @@ class VideoProcessor:
         output_blob_name = f"results/{blob_name}.json"
         output_uri = f"gs://{settings.GCS_BUCKET}/{output_blob_name}"
 
+        # Initialize GCS client
+        key_path = Path(__file__).parent.parent / 'sentinel-key.json'
+        creds = None
+        if key_path.exists():
+            creds = service_account.Credentials.from_service_account_file(str(key_path))
+        storage_client = storage.Client(credentials=creds)
+        bucket = storage_client.bucket(settings.GCS_BUCKET)
+
+        # --- FIX: Delete stale results from GCS before analysis ---
+        print(f"  🧹 Checking for and deleting stale results at {output_uri}...")
+        stale_blob = bucket.blob(output_blob_name)
+        if stale_blob.exists():
+            stale_blob.delete()
+            print(f"  ✓ Deleted stale results file.")
+        else:
+            print(f"  ✓ No stale results found.")
+        # --- END FIX ---
+
         operation = self.video_intelligence_client.annotate_video(
             request={
                 "features": features,
@@ -108,15 +126,7 @@ class VideoProcessor:
         print(" <- Operation complete.")
 
         # Retrieve results from GCS
-        key_path = Path(__file__).parent.parent / 'sentinel-key.json'
-        creds = None
-        if key_path.exists():
-            creds = service_account.Credentials.from_service_account_file(str(key_path))
-        storage_client = storage.Client(credentials=creds)
-        bucket = storage_client.bucket(settings.GCS_BUCKET)
-
         blob = bucket.blob(output_blob_name)
-
         print(f"  📥 Downloading results from {output_uri}...")
         try:
             result_json_str = blob.download_as_string()
@@ -313,11 +323,28 @@ class VideoProcessor:
                 if local_clip_path:
                     clip_blob_name = f"clips/{local_clip_path.name}"
                     clip_blob = bucket.blob(clip_blob_name)
-                    clip_blob.upload_from_filename(str(local_clip_path))
-                    clip_uri = f"gs://{settings.GCS_BUCKET}/{clip_blob_name}"
-                    clip_uris.append(clip_uri)
-                    if (i + 1) % 50 == 0:
-                        print(f"    ✓ Uploaded {i + 1}/{len(results)} clips")
+
+                    max_retries = 3
+                    uploaded = False
+                    for attempt in range(max_retries):
+                        try:
+                            clip_blob.upload_from_filename(str(local_clip_path))
+                            clip_uri = f"gs://{settings.GCS_BUCKET}/{clip_blob_name}"
+                            clip_uris.append(clip_uri)
+                            if (i + 1) % 50 == 0:
+                                print(f"    ✓ Uploaded {i + 1}/{len(results)} clips")
+                            uploaded = True
+                            break  # Success
+                        except Exception as e:
+                            if attempt < max_retries - 1:
+                                print(f"    ⚠️ Connection error on clip {i+1}, retrying in 5s... ({attempt + 1}/{max_retries})")
+                                await asyncio.sleep(5)
+                            else:
+                                print(f"    ❌ Failed to upload clip {i+1} after {max_retries} attempts: {e}")
+
+                    if not uploaded:
+                        clip_uris.append(None)
+
                 else:
                     # If clip creation failed, add None
                     clip_uris.append(None)
