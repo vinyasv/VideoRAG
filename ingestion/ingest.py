@@ -87,16 +87,20 @@ async def main_async():
                 max([int(k) for k in metadata['ocr_by_time'].keys()] or [0])
             ) + 1
 
-        print(f"\n[2/4] Creating chunks (duration: {video_duration}s)...")
+        print(f"\n[2/5] Creating chunks (duration: {video_duration}s)...")
         chunks = processor.create_chunks(video_duration)
         print(f"✓ Created {len(chunks)} chunks")
 
-        print(f"\n[3/4] Generating embeddings...")
+        print(f"\n[3/5] Creating and uploading video clips...")
+        clip_uris = await processor.create_clip_files(gcs_uri, chunks, args.video_id)
+        print(f"✓ Created {len([uri for uri in clip_uris if uri])} clips")
+
+        print(f"\n[4/5] Generating embeddings...")
         embeddings = processor.generate_embeddings(gcs_uri, chunks)
         print(f"✓ Generated {len(embeddings)} embeddings")
-        
-        print(f"\n[4/4] Creating documents and indexing...")
-        documents = processor.create_documents(args.video_id, chunks, embeddings, metadata)
+
+        print(f"\n[5/5] Creating documents and indexing...")
+        documents = processor.create_documents(args.video_id, chunks, embeddings, metadata, clip_uris)
         
         es = AsyncElasticsearch(
             settings.ELASTICSEARCH_ENDPOINT,

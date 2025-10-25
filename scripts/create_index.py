@@ -77,6 +77,9 @@ def create_video_index():
                             "type": "keyword"
                         }
                     }
+                },
+                "clip_uri": {
+                    "type": "keyword"
                 }
             }
         }
@@ -90,8 +93,8 @@ def create_video_index():
     print(f"  - video_embedding: dense_vector ({settings.EMBEDDING_DIMENSION} dims, cosine)")
     print(f"  - labels: keyword")
     print(f"  - ocr_text: text")
-    
-    mapping = es.indices.get_mapping(index=index_name)
+    print(f"  - clip_uri: keyword")
+
     print(f"\nIndex ready for ingestion!")
 
 if __name__ == "__main__":

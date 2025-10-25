@@ -68,7 +68,7 @@ class ElasticsearchClient:
                     knn=knn_config,
                     query=query,
                     size=top_k,
-                    _source=["video_id", "start_time_sec", "end_time_sec", "labels", "ocr_text", "objects"]
+                    _source=["video_id", "start_time_sec", "end_time_sec", "labels", "ocr_text", "objects", "clip_uri"]
                 )
                 print(f"   ✅ Hybrid search successful, found {len(response['hits']['hits'])} results")
                 normalized_results = self._normalize_scores(response['hits']['hits'])
@@ -83,7 +83,7 @@ class ElasticsearchClient:
             index=settings.VIDEO_INDEX_NAME,
             query=query,
             size=top_k,
-            _source=["video_id", "start_time_sec", "end_time_sec", "labels", "ocr_text", "objects"]
+            _source=["video_id", "start_time_sec", "end_time_sec", "labels", "ocr_text", "objects", "clip_uri"]
         )
         print(f"   ✅ Text search successful, found {len(response['hits']['hits'])} results")
         normalized_results = self._normalize_scores(response['hits']['hits'])

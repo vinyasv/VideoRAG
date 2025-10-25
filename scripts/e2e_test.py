@@ -5,7 +5,7 @@ import time
 # --- Configuration ---
 BASE_URL = "http://localhost:8000"
 ASK_ENDPOINT = f"{BASE_URL}/ask"
-VIDEO_ID = "burglary_video_compressed"
+VIDEO_ID = "burglars_new"
 
 QUERIES = [
     {

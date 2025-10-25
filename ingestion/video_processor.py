@@ -15,6 +15,7 @@ import tempfile
 import os
 from datetime import timedelta
 from google.oauth2 import service_account
+import uuid
 
 vertexai.init(project=settings.PROJECT_ID, location=settings.LOCATION)
 
@@ -244,7 +245,7 @@ class VideoProcessor:
     def create_chunks(self, video_duration_sec):
         chunks = []
         step = settings.CHUNK_DURATION_SEC - settings.CHUNK_OVERLAP_SEC
-        
+
         current = 0
         while current < video_duration_sec:
             end = min(current + settings.CHUNK_DURATION_SEC, video_duration_sec)
@@ -253,12 +254,108 @@ class VideoProcessor:
                 'end': end
             })
             current += step
-            
+
             if end >= video_duration_sec:
                 break
-        
+
         return chunks
-    
+
+    async def create_clip_files(self, gcs_uri, chunks, video_id):
+        """
+        Creates physical video clips for each chunk and uploads them to GCS.
+        Returns a list of clip URIs in the same order as chunks.
+        """
+        import subprocess
+
+        clip_uris = []
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Download source video
+            base_name = gcs_uri.split('/')[-1]
+            local_video_path = Path(temp_dir) / base_name
+
+            print(f"  📥 Downloading source video from {gcs_uri}...")
+            key_path = Path(__file__).parent.parent / 'sentinel-key.json'
+            creds = None
+            if key_path.exists():
+                creds = service_account.Credentials.from_service_account_file(str(key_path))
+
+            storage_client = storage.Client(credentials=creds)
+            bucket = storage_client.bucket(settings.GCS_BUCKET)
+            blob_name = gcs_uri.replace(f"gs://{settings.GCS_BUCKET}/", "")
+            blob = bucket.blob(blob_name)
+            blob.download_to_filename(str(local_video_path))
+            print(f"  ✓ Downloaded to {local_video_path}")
+
+            # Create clips for each chunk
+            tasks = []
+            for i, chunk in enumerate(chunks):
+                start = chunk['start']
+                end = chunk['end']
+                duration = end - start
+
+                # Create clip filename
+                clip_filename = f"{video_id}_chunk_{i}.mp4"
+                output_path = Path(temp_dir) / clip_filename
+
+                tasks.append(
+                    self._create_clip_async(
+                        local_video_path, output_path, start, duration, i
+                    )
+                )
+
+            # Run FFmpeg commands in parallel
+            results = await asyncio.gather(*tasks)
+
+            # Upload successful clips to GCS
+            print(f"  📤 Uploading {len([r for r in results if r])} clips to GCS...")
+            for i, local_clip_path in enumerate(results):
+                if local_clip_path:
+                    clip_blob_name = f"clips/{local_clip_path.name}"
+                    clip_blob = bucket.blob(clip_blob_name)
+                    clip_blob.upload_from_filename(str(local_clip_path))
+                    clip_uri = f"gs://{settings.GCS_BUCKET}/{clip_blob_name}"
+                    clip_uris.append(clip_uri)
+                    if (i + 1) % 50 == 0:
+                        print(f"    ✓ Uploaded {i + 1}/{len(results)} clips")
+                else:
+                    # If clip creation failed, add None
+                    clip_uris.append(None)
+
+            print(f"  ✓ Uploaded all clips to GCS")
+
+        return clip_uris
+
+    async def _create_clip_async(self, source_path, output_path, start, duration, idx):
+        """Helper to run a single ffmpeg command."""
+        ffmpeg_command = [
+            'ffmpeg',
+            '-ss', str(start),
+            '-i', str(source_path),
+            '-t', str(duration),
+            '-c', 'copy',  # Use stream copy for speed
+            '-y',
+            str(output_path)
+        ]
+
+        if (idx + 1) % 10 == 0:
+            print(f"  [{idx+1}] Creating clip {start}s-{start+duration}s...")
+
+        process = await asyncio.create_subprocess_exec(
+            *ffmpeg_command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        stdout, stderr = await process.communicate()
+
+        if process.returncode == 0:
+            return output_path
+        else:
+            print(f"  ❌ [{idx+1}] Failed to create clip.")
+            print(f"    STDERR: {stderr.decode()}")
+            return None
+
     def generate_embeddings(self, gcs_uri, chunks):
         embeddings = []
         video = Video.load_from_file(gcs_uri)
@@ -294,7 +391,7 @@ class VideoProcessor:
 
         return embeddings
     
-    def create_documents(self, video_id, chunks, embeddings, metadata):
+    def create_documents(self, video_id, chunks, embeddings, metadata, clip_uris=None):
         documents = []
 
         # Map embeddings by chunk bounds for quick lookup
@@ -303,7 +400,7 @@ class VideoProcessor:
             for e in embeddings
         }
 
-        for chunk in chunks:
+        for i, chunk in enumerate(chunks):
             start = int(chunk['start'])
             end = int(chunk['end'])
 
@@ -334,6 +431,10 @@ class VideoProcessor:
             emb = embed_by_range.get((start, end))
             if emb is not None:
                 doc['video_embedding'] = emb
+
+            # Include clip URI if available
+            if clip_uris and i < len(clip_uris) and clip_uris[i]:
+                doc['clip_uri'] = clip_uris[i]
 
             documents.append(doc)
 

@@ -1,6 +1,5 @@
 
 import sys
-import asyncio
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -8,8 +7,6 @@ import vertexai
 from vertexai.generative_models import GenerativeModel, Part
 from vertexai.vision_models import MultiModalEmbeddingModel
 from config import settings
-from backend.video_clipper import create_clips_from_timestamps
-from backend.gcs_client import gcs_client
 
 vertexai.init(project=settings.PROJECT_ID, location=settings.LOCATION)
 
@@ -31,6 +28,63 @@ class VertexAIClient:
             print("   Falling back to text-only search")
             return None
 
+    async def synthesize_answer_text_only(self, query: str, search_results: list, video_id: str, video_summary: str) -> str:
+        """Generate answer using only text metadata (no video clips) - FAST mode"""
+        if not search_results:
+            prompt = f"""You are an expert security analyst. A user asked a question about a video, but the search system could not find any relevant video segments.
+            Your task is to inform the user that no relevant footage was found for their specific query and suggest they try rephrasing their question or asking about a different event.
+            The user's original query was: "{query}"
+            """
+            response = await self.gemini_model.generate_content_async(prompt)
+            return response.text
+
+        # Detect temporal queries
+        temporal_keywords = ['when', 'what time', 'time did', 'at what', 'hour', 'minute', 'o\'clock']
+        is_temporal = any(kw in query.lower() for kw in temporal_keywords)
+
+        temporal_instructions = ""
+        if is_temporal:
+            temporal_instructions = """
+IMPORTANT: This is a TEMPORAL query asking about WHEN something happened.
+- Look for timestamps in the OCR text
+- If timestamps are visible, extract the EXACT time
+- Include specific times in your answer
+"""
+
+        # Build text-only context
+        context_parts = []
+        context_parts.append(f"""You are an expert security analyst analyzing security footage.
+{temporal_instructions}
+First, here is a high-level summary of the entire video for context:
+---
+{video_summary}
+---
+
+Now, using that summary for context, your main task is to answer the user's specific query.
+The user's query is: "{query}"
+
+You have access to the following video segment metadata. Analyze it carefully and provide a concise, factual answer.
+""")
+
+        for i, result in enumerate(search_results):
+            src = result['_source']
+            context_parts.append(f"""
+--- Segment {i+1} ({src['start_time_sec']:.0f}s - {src['end_time_sec']:.0f}s) ---
+Labels detected: {', '.join(src.get('labels', []))}
+Text visible (OCR): {src.get('ocr_text', 'None')}
+Objects tracked: {', '.join([obj['description'] for obj in src.get('objects', [])])}
+""")
+
+        context_parts.append(f"""
+Based on this metadata, provide a concise answer to the query: "{query}"
+For every claim you make, state which segment it is based on.
+If the metadata does not contain enough information, state that clearly.
+""")
+
+        prompt = '\n'.join(context_parts)
+        response = await self.gemini_model.generate_content_async(prompt)
+        return response.text
+
     async def synthesize_answer(self, query: str, search_results: list, video_id: str, video_summary: str) -> str:
         if not search_results:
             # Handle case where no clips are found by sending a specific prompt to the LLM
@@ -41,18 +95,15 @@ class VertexAIClient:
             response = await self.gemini_model.generate_content_async(prompt)
             return response.text
 
-        timestamps = [
-            {"start_time_sec": r['_source']['start_time_sec'], "end_time_sec": r['_source']['end_time_sec']}
+        # Extract pre-clipped URIs from search results
+        clipped_video_uris = [
+            r['_source'].get('clip_uri')
             for r in search_results
+            if r['_source'].get('clip_uri')
         ]
 
-        source_video_uri = gcs_client.get_video_uri(video_id)
-
-        # 1. Create temporary clips
-        clipped_video_uris = await create_clips_from_timestamps(source_video_uri, timestamps)
-
         if not clipped_video_uris:
-            return "Could not extract relevant video clips for analysis."
+            return "Could not find pre-clipped video segments for analysis."
 
         try:
             # 2. Build the multimodal prompt
@@ -98,13 +149,9 @@ Finally, provide a concluding sentence that connects your clip analysis to the o
             response = await self.gemini_model.generate_content_async(prompt_parts)
             return response.text
 
-        finally:
-            # 4. Clean up the temporary clips
-            print(f"Cleaning up {len(clipped_video_uris)} temporary clips...")
-            await asyncio.gather(*[
-                asyncio.to_thread(gcs_client.delete_video, uri) for uri in clipped_video_uris
-            ])
-            print("Cleanup complete.")
+        except Exception as e:
+            print(f"❌ Error during answer synthesis: {e}")
+            raise
 
 
 vertex_ai_client = VertexAIClient()

@@ -87,18 +87,23 @@ function hideLoading() {
 async function askQuestion() {
     const query = queryInput.value.trim();
     if (!query) return;
-    
+
+    const useVideoClips = document.getElementById('useVideoClips').checked;
+
     appendMessage('user', query);
+    if (useVideoClips) {
+        appendMessage('system', '🎬 Using detailed analysis mode (processing video clips)');
+    }
     queryInput.value = '';
     sendBtn.disabled = true;
-    
+
     showLoading();
-    
+
     try {
         const response = await fetch(`${API_URL}/ask`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({query, video_id: currentVideoId})
+            body: JSON.stringify({query, video_id: currentVideoId, use_video_clips: useVideoClips})
         });
         
         hideLoading();

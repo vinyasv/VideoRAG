@@ -98,11 +98,21 @@ async def ask_question(request: QueryRequest):
         if summary_file.exists():
             with open(summary_file, 'r') as f:
                 summaries = json.load(f)
-                video_summary = summaries.get(request.video_id, "No summary available for this video.")
+                # Strip extension for lookup
+                summary_key = request.video_id.replace('.mp4', '')
+                video_summary = summaries.get(summary_key, "No summary available for this video.")
 
-        answer = await vertex_ai_client.synthesize_answer(
-            query_text, search_results, request.video_id, video_summary
-        )
+        # Choose RAG method based on flag
+        if request.use_video_clips:
+            # Slower but more detailed - uses actual video clips
+            answer = await vertex_ai_client.synthesize_answer(
+                query_text, search_results, request.video_id, video_summary
+            )
+        else:
+            # Faster - uses only text metadata
+            answer = await vertex_ai_client.synthesize_answer_text_only(
+                query_text, search_results, request.video_id, video_summary
+            )
         
         clips = [
             VideoClip(
@@ -147,4 +157,34 @@ if frontend_dir.exists():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+@app.get("/test-prompt")
+async def test_prompt():
+    """Temporary endpoint to test the new prompt."""
+    query_text = "Describe the two suspects at the door."
+    video_id = "burglary_video_compressed.mp4"
+
+    query_embedding = vertex_ai_client.get_query_embedding(query_text)
+
+    search_results = await es_client.hybrid_search(
+        query_embedding=query_embedding,
+        query_text=query_text,
+        video_id=video_id,
+        top_k=5
+    )
+
+    summary_file = Path(__file__).parent.parent / 'video_summaries.json'
+    video_summary = "No summary available."
+    if summary_file.exists():
+        with open(summary_file, 'r') as f:
+            summaries = json.load(f)
+            summary_key = video_id.replace('.mp4', '')
+            video_summary = summaries.get(summary_key, "No summary available for this video.")
+
+    answer = await vertex_ai_client.synthesize_answer(
+        query_text, search_results, video_id, video_summary
+    )
+
+    return {"question": query_text, "answer": answer}
 

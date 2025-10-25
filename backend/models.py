@@ -3,6 +3,7 @@ from pydantic import BaseModel
 class QueryRequest(BaseModel):
     query: str
     video_id: str | None = None
+    use_video_clips: bool = False  # Default to fast text-only RAG
 
 class VideoClip(BaseModel):
     start_time_sec: float

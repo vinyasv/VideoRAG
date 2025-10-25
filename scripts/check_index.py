@@ -20,6 +20,7 @@ for i, hit in enumerate(response['hits']['hits']):
     print(f"  Time: {hit['_source']['start_time_sec']}-{hit['_source']['end_time_sec']}s")
     print(f"  Labels: {hit['_source']['labels']}")
     print(f"  OCR: {hit['_source']['ocr_text'][:100] if hit['_source']['ocr_text'] else 'none'}")
+    print(f"  Video ID: {hit['_source']['video_id']}")
     print(f"  Score: {hit['_score']}")
     print()
 
