@@ -52,19 +52,19 @@ async def get_video_url(video_id: str):
     # Strip .mp4 extension if present
     video_id_base = video_id.replace('.mp4', '')
 
-    # Try compressed version first (for bundled videos in container)
-    compressed_filename = f"{video_id_base}_compressed.mp4"
-    compressed_path = videos_dir / compressed_filename
-
-    if compressed_path.exists():
-        return {"url": f"/videos/{compressed_filename}"}
-
-    # Try exact filename
+    # Try exact filename first
     exact_filename = f"{video_id_base}.mp4"
     exact_path = videos_dir / exact_filename
 
     if exact_path.exists():
         return {"url": f"/videos/{exact_filename}"}
+
+    # Try compressed version (for bundled videos in container)
+    compressed_filename = f"{video_id_base}_compressed.mp4"
+    compressed_path = videos_dir / compressed_filename
+
+    if compressed_path.exists():
+        return {"url": f"/videos/{compressed_filename}"}
 
     # Fallback to GCS signed URL for local development
     try:

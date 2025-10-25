@@ -174,7 +174,7 @@ videoPlayer.addEventListener('loadedmetadata', () => {
 });
 
 function loadThumbnails() {
-    document.querySelectorAll('.video-card:not(.main-video)').forEach(card => {
+    document.querySelectorAll('.video-card').forEach(card => {
         const videoId = card.dataset.videoId;
         if (!videoId) return;
 
