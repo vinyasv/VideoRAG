@@ -51,9 +51,33 @@ def create_video_index(force=False):
                     "type": "text",
                     "fields": { "keyword": { "type": "keyword" } }
                 },
+                "shot_labels": {
+                    "type": "text",
+                    "fields": { "keyword": { "type": "keyword" } }
+                },
                 "ocr_text": {
                     "type": "text",
                     "fields": { "keyword": { "type": "keyword", "ignore_above": 256 } }
+                },
+                "ocr_items": {
+                    "type": "nested",
+                    "properties": {
+                        "text": { "type": "text" },
+                        "confidence": { "type": "float" },
+                        "time_offset_sec": { "type": "float" },
+                        "bounding_box": {
+                            "type": "object",
+                            "properties": {
+                                "vertices": {
+                                    "type": "nested",
+                                    "properties": {
+                                        "x": { "type": "float" },
+                                        "y": { "type": "float" }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 },
                 "objects": {
                     "type": "nested",
@@ -62,7 +86,25 @@ def create_video_index(force=False):
                             "type": "text",
                             "fields": { "keyword": { "type": "keyword" } }
                         },
-                        "track_id": { "type": "keyword" }
+                        "track_id": { "type": "keyword" },
+                        "confidence": { "type": "float" },
+                        "segment_start_sec": { "type": "float" },
+                        "segment_end_sec": { "type": "float" },
+                        "frames": {
+                            "type": "nested",
+                            "properties": {
+                                "time_offset_sec": { "type": "float" },
+                                "bounding_box": {
+                                    "type": "object",
+                                    "properties": {
+                                        "left": { "type": "float" },
+                                        "top": { "type": "float" },
+                                        "right": { "type": "float" },
+                                        "bottom": { "type": "float" }
+                                    }
+                                }
+                            }
+                        }
                     }
                 },
                 "clip_uri": { "type": "keyword" }

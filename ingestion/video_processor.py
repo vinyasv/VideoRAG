@@ -170,9 +170,13 @@ class VideoProcessor:
 
     def _extract_metadata(self, annotation_result):
         labels_by_time = {}
+        shot_labels_by_time = {}
         ocr_by_time = {}
+        ocr_items = []
         objects_by_time = {}
+        all_objects = []
 
+        # Extract segment labels (video-level)
         for label in annotation_result.segment_label_annotations:
             for segment in label.segments:
                 start = int(segment.segment.start_time_offset.seconds)
@@ -183,34 +187,129 @@ class VideoProcessor:
                         labels_by_time[t] = set()
                     labels_by_time[t].add(label.entity.description)
 
+        # Extract shot labels (scene-level) - NEW
+        for label in annotation_result.shot_label_annotations:
+            for segment in label.segments:
+                start = int(segment.segment.start_time_offset.seconds)
+                end = int(segment.segment.end_time_offset.seconds)
+
+                for t in range(start, end + 1):
+                    if t not in shot_labels_by_time:
+                        shot_labels_by_time[t] = set()
+                    shot_labels_by_time[t].add(label.entity.description)
+
+        # Extract OCR text with spatial data - ENHANCED
         for text_annotation in annotation_result.text_annotations:
             for segment in text_annotation.segments:
                 start = int(segment.segment.start_time_offset.seconds)
                 end = int(segment.segment.end_time_offset.seconds)
 
+                # Store for simple text search (backward compat)
                 for t in range(start, end + 1):
                     if t not in ocr_by_time:
                         ocr_by_time[t] = set()
                     ocr_by_time[t].add(text_annotation.text)
 
+                # Store detailed OCR items with bounding boxes - NEW
+                for frame in segment.frames:
+                    # Handle both timedelta and protobuf Duration
+                    time_offset = frame.time_offset
+                    if hasattr(time_offset, 'total_seconds'):
+                        time_offset_sec = time_offset.total_seconds()
+                    elif hasattr(time_offset, 'seconds'):
+                        time_offset_sec = time_offset.seconds + (getattr(time_offset, 'nanos', 0) / 1e9)
+                    else:
+                        time_offset_sec = 0.0
+
+                    # Extract bounding box vertices
+                    vertices = []
+                    if hasattr(frame, 'rotated_bounding_box') and frame.rotated_bounding_box:
+                        for vertex in frame.rotated_bounding_box.vertices:
+                            vertices.append({'x': vertex.x, 'y': vertex.y})
+
+                    ocr_items.append({
+                        'text': text_annotation.text,
+                        'confidence': segment.confidence,
+                        'time_offset_sec': time_offset_sec,
+                        'bounding_box': {'vertices': vertices} if vertices else None
+                    })
+
+        # Extract objects with full frame-level tracking - ENHANCED
         for object_annotation in annotation_result.object_annotations:
             description = object_annotation.entity.description
-            track_id = object_annotation.track_id
+            confidence = object_annotation.confidence
 
+            # Extract segment timing
+            start_offset = object_annotation.segment.start_time_offset
+            end_offset = object_annotation.segment.end_time_offset
+
+            if hasattr(start_offset, 'total_seconds'):
+                segment_start = start_offset.total_seconds()
+            elif hasattr(start_offset, 'seconds'):
+                segment_start = start_offset.seconds + (getattr(start_offset, 'nanos', 0) / 1e9)
+            else:
+                segment_start = 0.0
+
+            if hasattr(end_offset, 'total_seconds'):
+                segment_end = end_offset.total_seconds()
+            elif hasattr(end_offset, 'seconds'):
+                segment_end = end_offset.seconds + (getattr(end_offset, 'nanos', 0) / 1e9)
+            else:
+                segment_end = 0.0
+
+            # Extract all frame-level bounding boxes
+            frames_data = []
             for frame in object_annotation.frames:
-                t = int(frame.time_offset.seconds)
+                time_offset = frame.time_offset
+                if hasattr(time_offset, 'total_seconds'):
+                    time_offset_sec = time_offset.total_seconds()
+                elif hasattr(time_offset, 'seconds'):
+                    time_offset_sec = time_offset.seconds + (getattr(time_offset, 'nanos', 0) / 1e9)
+                else:
+                    time_offset_sec = 0.0
+
+                bbox = None
+                if hasattr(frame, 'normalized_bounding_box') and frame.normalized_bounding_box:
+                    bbox = {
+                        'left': frame.normalized_bounding_box.left,
+                        'top': frame.normalized_bounding_box.top,
+                        'right': frame.normalized_bounding_box.right,
+                        'bottom': frame.normalized_bounding_box.bottom
+                    }
+
+                frames_data.append({
+                    'time_offset_sec': time_offset_sec,
+                    'bounding_box': bbox
+                })
+
+                # Also store in objects_by_time for chunk aggregation
+                t = int(time_offset_sec)
                 if t not in objects_by_time:
                     objects_by_time[t] = []
-
                 objects_by_time[t].append({
                     'description': description,
-                    'track_id': str(track_id)
+                    'track_id': str(getattr(object_annotation, 'track_id', 'unknown')),
+                    'confidence': confidence,
+                    'frames': frames_data
                 })
+
+            # Store complete object with all frames - NEW
+            all_objects.append({
+                'description': description,
+                'track_id': str(getattr(object_annotation, 'track_id', 'unknown')),
+                'confidence': confidence,
+                'segment_start_sec': segment_start,
+                'segment_end_sec': segment_end,
+                'frames': frames_data
+            })
 
         return {
             'labels_by_time': {k: list(v) for k, v in labels_by_time.items()},
+            'shot_labels_by_time': {k: list(v) for k, v in shot_labels_by_time.items()},
             'ocr_by_time': {k: ' '.join(v) for k, v in ocr_by_time.items()},
-            'objects_by_time': objects_by_time
+            'ocr_items': ocr_items,
+            'objects_by_time': objects_by_time,
+            'all_objects': all_objects
         }
 
     async def _generate_video_summary(self, metadata):
@@ -432,26 +531,61 @@ class VideoProcessor:
             end = int(chunk['end'])
 
             labels = set()
+            shot_labels = set()
             ocr_texts = []
-            objects = {}  # Using a dict to store unique objects by track_id
+            objects_in_chunk = []
+            ocr_items_in_chunk = []
 
+            # Aggregate labels and shot labels
             for t in range(start, end + 1):
                 if t in metadata['labels_by_time']:
                     labels.update(metadata['labels_by_time'][t])
+                if t in metadata.get('shot_labels_by_time', {}):
+                    shot_labels.update(metadata['shot_labels_by_time'][t])
                 if t in metadata['ocr_by_time']:
                     ocr_texts.append(metadata['ocr_by_time'][t])
-                if t in metadata['objects_by_time']:
-                    for obj in metadata['objects_by_time'][t]:
-                        if obj['track_id'] not in objects:
-                            objects[obj['track_id']] = obj
+
+            # Collect ALL objects that appear in this chunk (no deduplication)
+            # We'll store complete object data with all frames
+            seen_objects = set()  # Track (description, track_id) to avoid exact duplicates
+            for obj in metadata.get('all_objects', []):
+                # Check if this object's frames overlap with this chunk
+                obj_appears_in_chunk = False
+                frames_in_chunk = []
+
+                for frame in obj['frames']:
+                    frame_time = frame['time_offset_sec']
+                    if start <= frame_time <= end:
+                        obj_appears_in_chunk = True
+                        frames_in_chunk.append(frame)
+
+                if obj_appears_in_chunk:
+                    obj_key = (obj['description'], obj['track_id'])
+                    if obj_key not in seen_objects:
+                        seen_objects.add(obj_key)
+                        objects_in_chunk.append({
+                            'description': obj['description'],
+                            'track_id': obj['track_id'],
+                            'confidence': obj['confidence'],
+                            'segment_start_sec': obj['segment_start_sec'],
+                            'segment_end_sec': obj['segment_end_sec'],
+                            'frames': frames_in_chunk  # Only frames within this chunk
+                        })
+
+            # Collect OCR items that appear in this chunk
+            for ocr_item in metadata.get('ocr_items', []):
+                if start <= ocr_item['time_offset_sec'] <= end:
+                    ocr_items_in_chunk.append(ocr_item)
 
             doc = {
                 'video_id': video_id,
                 'start_time_sec': float(chunk['start']),
                 'end_time_sec': float(chunk['end']),
                 'labels': list(labels),
+                'shot_labels': list(shot_labels),
                 'ocr_text': ' '.join(list(dict.fromkeys(ocr_texts))),
-                'objects': list(objects.values())
+                'ocr_items': ocr_items_in_chunk,
+                'objects': objects_in_chunk
             }
 
             # Include embedding only if available for this chunk

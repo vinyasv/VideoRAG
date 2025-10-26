@@ -144,6 +144,8 @@ video {
     position: relative;
     display: flex;
     flex-direction: column;
+    max-height: 600px;
+    height: 600px;
 }
 
 /* Empty State - Centered Input */
@@ -176,7 +178,9 @@ video {
     gap: 19px;
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 18px;
+    min-height: 0;
 }
 
 .chat-section:not(.empty) .chat-bottom-container {

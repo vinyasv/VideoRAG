@@ -53,6 +53,12 @@ class GCSClient:
         blob = self.bucket.blob(blob_name)
         blob.download_to_filename(destination_path)
 
+    def download_video_as_bytes(self, gcs_uri: str) -> bytes:
+        """Downloads a video from GCS and returns its content as bytes."""
+        blob_name = gcs_uri.replace(f"gs://{self.bucket_name}/", "")
+        blob = self.bucket.blob(blob_name)
+        return blob.download_as_bytes()
+
     
     def get_video_uri(self, video_id: str) -> str:
         if not video_id.endswith('.mp4'):

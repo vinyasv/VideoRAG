@@ -11,6 +11,7 @@ import asyncio
 import subprocess
 import json
 from datetime import datetime
+from config import settings
 
 from backend.models import QueryRequest, QueryResponse, VideoClip
 from backend.elasticsearch_client import ElasticsearchClient
@@ -88,14 +89,14 @@ async def ask_question(request: QueryRequest):
             query_embedding=query_embedding,
             query_text=query_text,
             video_id=request.video_id,
-            top_k=5
+            top_k=10
         )
         
 
         # Load video summary
         summary_file = Path(__file__).parent.parent / 'video_summaries.json'
         video_summary = "No summary available."
-        if summary_file.exists():
+        if summary_file.exists() and request.video_id:
             with open(summary_file, 'r') as f:
                 summaries = json.load(f)
                 # Strip extension for lookup
@@ -159,32 +160,4 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
-@app.get("/test-prompt")
-async def test_prompt():
-    """Temporary endpoint to test the new prompt."""
-    query_text = "Describe the two suspects at the door."
-    video_id = "burglary_video_compressed.mp4"
-
-    query_embedding = vertex_ai_client.get_query_embedding(query_text)
-
-    search_results = await es_client.hybrid_search(
-        query_embedding=query_embedding,
-        query_text=query_text,
-        video_id=video_id,
-        top_k=5
-    )
-
-    summary_file = Path(__file__).parent.parent / 'video_summaries.json'
-    video_summary = "No summary available."
-    if summary_file.exists():
-        with open(summary_file, 'r') as f:
-            summaries = json.load(f)
-            summary_key = video_id.replace('.mp4', '')
-            video_summary = summaries.get(summary_key, "No summary available for this video.")
-
-    answer = await vertex_ai_client.synthesize_answer(
-        query_text, search_results, video_id, video_summary
-    )
-
-    return {"question": query_text, "answer": answer}
 
