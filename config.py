@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     VIDEO_INDEX_NAME: str = "sentinel-video-segments"
     EMBEDDING_MODEL: str = "multimodalembedding@001"
     EMBEDDING_DIMENSION: int = 1408
-    CHUNK_DURATION_SEC: int = 8
+    CHUNK_DURATION_SEC: int = 16
     CHUNK_OVERLAP_SEC: int = 4
     GEMINI_MODEL: str = "gemini-2.0-flash"
     

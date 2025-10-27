@@ -87,13 +87,38 @@ async def main_async():
     parser.add_argument('--video-path', required=True, help='Path to video file (local or GCS URI)')
     parser.add_argument('--video-id', required=True, help='Unique identifier for the video')
     parser.add_argument('--duration', type=int, help='Video duration in seconds (optional, will analyze if not provided)')
-    
+
     args = parser.parse_args()
-    
+
     print(f"Starting ingestion for video: {args.video_id}")
     print(f"Video path: {args.video_path}")
-    
+
+    es = None
     try:
+        es = AsyncElasticsearch(
+            settings.ELASTICSEARCH_ENDPOINT,
+            api_key=settings.ELASTICSEARCH_API_KEY,
+            request_timeout=60
+        )
+
+        print(f"\n[PRE-FLIGHT] Deleting existing documents for video_id: {args.video_id}...")
+        delete_query = {
+            "query": {
+                "term": {
+                    "video_id": args.video_id
+                }
+            }
+        }
+        response = await es.delete_by_query(
+            index=settings.VIDEO_INDEX_NAME,
+            body=delete_query,
+            conflicts='proceed',
+            wait_for_completion=True,
+            refresh=True
+        )
+        deleted_count = response.get('deleted', 0)
+        print(f"✓ Deleted {deleted_count} existing documents.")
+
         processor = VideoProcessor()
 
         print("\n[1/4] Analyzing video with Video Intelligence API...")
@@ -118,38 +143,34 @@ async def main_async():
         print(f"✓ Created {len([uri for uri in clip_uris if uri])} clips")
 
         print(f"\n[4/5] Generating embeddings...")
-        embeddings = processor.generate_embeddings(gcs_uri, chunks)
+        embeddings = await asyncio.to_thread(processor.generate_embeddings, gcs_uri, chunks)
         print(f"✓ Generated {len(embeddings)} embeddings")
 
         print(f"\n[5/5] Creating documents and indexing...")
         documents = processor.create_documents(args.video_id, chunks, embeddings, metadata, clip_uris)
-        
-        es = AsyncElasticsearch(
-            settings.ELASTICSEARCH_ENDPOINT,
-            api_key=settings.ELASTICSEARCH_API_KEY,
-            request_timeout=60
-        )
-        
+
         success, failed = await index_documents_async(es, documents)
-        await es.close()
-        
+
         print(f"✓ Indexed {success} documents")
-        
+
         if failed:
             print(f"⚠ Failed to index {failed} documents")
-        
+
         print(f"\n✅ Ingestion complete for {args.video_id}")
         print(f"Total segments indexed: {len(documents)}")
 
-        # Save the generated summary
         update_video_summary(args.video_id, summary)
-        
+
     except Exception as e:
         print(f"\n❌ Ingestion failed: {str(e)}")
         import traceback
         traceback.print_exc()
         return 1
-    
+    finally:
+        if es:
+            await es.close()
+            print("\n✓ Elasticsearch connection closed.")
+
     return 0
 
 def main():

@@ -261,6 +261,18 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
     loadThumbnails();
+
+    const useVideoClipsInitial = document.getElementById('useVideoClipsInitial');
+    const useVideoClips = document.getElementById('useVideoClips');
+
+    if (useVideoClipsInitial && useVideoClips) {
+        useVideoClipsInitial.addEventListener('change', (event) => {
+            useVideoClips.checked = event.target.checked;
+        });
+        useVideoClips.addEventListener('change', (event) => {
+            useVideoClipsInitial.checked = event.target.checked;
+        });
+    }
 });
 
 queryInput.focus();

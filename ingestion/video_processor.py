@@ -16,6 +16,7 @@ import os
 from datetime import timedelta
 from google.oauth2 import service_account
 import uuid
+import concurrent.futures
 
 vertexai.init(project=settings.PROJECT_ID, location=settings.LOCATION)
 
@@ -482,39 +483,53 @@ class VideoProcessor:
             print(f"    STDERR: {stderr.decode()}")
             return None
 
+    def _get_embedding_for_chunk(self, video, chunk):
+        """Helper function to get embedding for a single chunk, designed for threading."""
+        config = VideoSegmentConfig(
+            start_offset_sec=chunk['start'],
+            end_offset_sec=chunk['end']
+        )
+        try:
+            response = self.embedding_model.get_embeddings(
+                video=video,
+                video_segment_config=config,
+                dimension=settings.EMBEDDING_DIMENSION
+            )
+            if response.video_embeddings:
+                return {
+                    'start': chunk['start'],
+                    'end': chunk['end'],
+                    'embedding': response.video_embeddings[0].embedding
+                }
+            else:
+                print(f"    ⚠ No embeddings returned for chunk {chunk['start']}-{chunk['end']}s")
+                return None
+        except Exception as e:
+            print(f"    ❌ Error generating embedding for chunk {chunk['start']}-{chunk['end']}s: {e}")
+            return None
+
     def generate_embeddings(self, gcs_uri, chunks):
         embeddings = []
         video = Video.load_from_file(gcs_uri)
 
-        for i, chunk in enumerate(chunks):
-            print(f"  🔄 Generating embedding for chunk {i+1}/{len(chunks)} ({chunk['start']}-{chunk['end']}s)")
+        # Use ThreadPoolExecutor to parallelize API calls
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            # Create a future for each chunk
+            future_to_chunk = {executor.submit(self._get_embedding_for_chunk, video, chunk): chunk for chunk in chunks}
 
-            config = VideoSegmentConfig(
-                start_offset_sec=int(chunk['start']),
-                end_offset_sec=int(chunk['end'])
-            )
+            for i, future in enumerate(concurrent.futures.as_completed(future_to_chunk)):
+                chunk = future_to_chunk[future]
+                print(f"  🔄 [{i+1}/{len(chunks)}] Processing embedding for chunk {chunk['start']}-{chunk['end']}s")
+                try:
+                    result = future.result()
+                    if result:
+                        embeddings.append(result)
+                        print(f"    ✓ Generated embedding (dim: {len(result['embedding'])})")
+                except Exception as exc:
+                    print(f"    ❌ Chunk {chunk['start']}-{chunk['end']}s generated an exception: {exc}")
 
-            try:
-                print(f"    -> Calling get_embeddings API...")
-                response = self.embedding_model.get_embeddings(
-                    video=video,
-                    video_segment_config=config,
-                    dimension=settings.EMBEDDING_DIMENSION
-                )
-                print(f"    <- API call complete.")
-
-                if response.video_embeddings:
-                    embeddings.append({
-                        'start': chunk['start'],
-                        'end': chunk['end'],
-                        'embedding': response.video_embeddings[0].embedding
-                    })
-                    print(f"    ✓ Generated embedding (dim: {len(response.video_embeddings[0].embedding)})")
-                else:
-                    print(f"    ⚠ No embeddings returned for chunk {chunk['start']}-{chunk['end']}s")
-            except Exception as e:
-                print(f"    ❌ Error generating embedding for chunk {chunk['start']}-{chunk['end']}s: {e}")
-
+        # Sort embeddings by start time to maintain order
+        embeddings.sort(key=lambda x: x['start'])
         return embeddings
     
     def create_documents(self, video_id, chunks, embeddings, metadata, clip_uris=None):
@@ -522,13 +537,13 @@ class VideoProcessor:
 
         # Map embeddings by chunk bounds for quick lookup
         embed_by_range = {
-            (int(e['start']), int(e['end'])): e['embedding']
+            (e['start'], e['end']): e['embedding']
             for e in embeddings
         }
 
         for i, chunk in enumerate(chunks):
-            start = int(chunk['start'])
-            end = int(chunk['end'])
+            start = chunk['start']
+            end = chunk['end']
 
             labels = set()
             shot_labels = set()

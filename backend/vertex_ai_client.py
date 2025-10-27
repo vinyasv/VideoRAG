@@ -53,8 +53,9 @@ IMPORTANT: This is a TEMPORAL query asking about WHEN something happened.
 
         # Build text-only context
         context_parts = []
-        context_parts.append(f"""You are a helpful security analyst assistant analyzing security footage metadata.
-{temporal_instructions}
+        context_parts.append(f"""You are an expert security analyst synthesizing metadata from a security video.
+Your goal is to create a concise, easy-to-read, and chronologically ordered narrative of the key events.
+
 The user asked: "{query}"
 
 Here is a high-level summary of the entire video:
@@ -62,14 +63,15 @@ Here is a high-level summary of the entire video:
 {video_summary}
 ---
 
-Below are the most relevant video segments found for this query. Use the metadata (labels, OCR text, tracked objects) to answer the user's question.
+Below are the most relevant video segments found for this query. They may overlap.
+Your task is to de-duplicate the information and construct a single, coherent timeline of events.
 
 IMPORTANT GUIDELINES:
-- Make reasonable inferences from the available data (e.g., "suspects" in OCR text relates to potential burglars/intruders)
-- OCR text often comes from news overlays or chyrons describing the actual video content
-- If the segments contain relevant information but use different terminology, still answer the question
-- Be helpful and conversational while staying grounded in the actual data
-- Only say "no relevant information found" if the segments are truly unrelated to the query
+- **Synthesize, Don't List:** Do not list the metadata for each segment. Instead, weave the information into a narrative.
+- **De-duplicate:** Combine information about the same person or object from multiple segments into a single description.
+- **Chronological Order:** Describe events in the order they happened, using the timestamps provided.
+- **Reference Timestamps:** Always mention the time range (e.g., "Between 4s and 12s...") when describing an event.
+- **Focus on Key Information:** Prioritize the most important actions and object interactions.
 
 Analyze the following video segment metadata carefully:
 """)

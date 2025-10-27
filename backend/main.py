@@ -89,7 +89,7 @@ async def ask_question(request: QueryRequest):
             query_embedding=query_embedding,
             query_text=query_text,
             video_id=request.video_id,
-            top_k=10
+            top_k=5
         )
         
 
