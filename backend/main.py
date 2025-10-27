@@ -20,6 +20,48 @@ from backend.gcs_client import gcs_client
 
 es_client = None
 
+
+def _score_for(hit: dict) -> float:
+    """Return the best available score for a search hit."""
+    return float(hit.get('_normalized_score') or hit.get('_score') or 0.0)
+
+
+def _select_llm_hits(hits: list[dict], *, min_absolute: float = 0.45,
+                     relative_ratio: float = 0.6, max_hits: int = 3) -> list[dict]:
+    """
+    Filter search hits to only high-quality results for LLM ingestion.
+
+    Ensures we keep:
+      - hits that meet an absolute quality floor (min_absolute)
+      - hits within `relative_ratio` of the best-scoring hit
+      - at least one hit (the top result), even if all fall below thresholds
+    """
+    if not hits:
+        return []
+
+    # Sort hits by descending score to ensure consistent ordering
+    ordered_hits = sorted(hits, key=_score_for, reverse=True)
+
+    scores = [_score_for(hit) for hit in ordered_hits]
+    best_score = scores[0]
+
+    if best_score <= 0:
+        return hits[:max_hits]
+
+    absolute_threshold = min_absolute
+    relative_threshold = best_score * relative_ratio
+    effective_threshold = max(absolute_threshold, relative_threshold)
+
+    filtered = [
+        hit for hit, score in zip(ordered_hits, scores)
+        if score >= effective_threshold
+    ]
+
+    if not filtered:
+        filtered = [ordered_hits[0]]
+
+    return filtered[:max_hits]
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global es_client
@@ -103,18 +145,20 @@ async def ask_question(request: QueryRequest):
                 summary_key = request.video_id.replace('.mp4', '')
                 video_summary = summaries.get(summary_key, "No summary available for this video.")
 
+        llm_hits = _select_llm_hits(search_results)
+        print(f"ℹ️ LLM clip filter kept {len(llm_hits)} of {len(search_results)} hits.")
+
         # Choose RAG method based on flag
         if request.use_video_clips:
             # Slower but more detailed - uses actual video clips
             answer = await vertex_ai_client.synthesize_answer(
-                query_text, search_results, request.video_id, video_summary
+                query_text, llm_hits, request.video_id, video_summary
             )
         else:
             # Faster - uses only text metadata
             answer = await vertex_ai_client.synthesize_answer_text_only(
-                query_text, search_results, request.video_id, video_summary
+                query_text, llm_hits, request.video_id, video_summary
             )
-        
         clips = [
             VideoClip(
                 start_time_sec=hit['_source']['start_time_sec'],
@@ -123,7 +167,7 @@ async def ask_question(request: QueryRequest):
                 labels=hit['_source'].get('labels', []),
                 ocr_text=hit['_source'].get('ocr_text', '')
             )
-            for hit in search_results
+            for hit in llm_hits
         ]
         
         return QueryResponse(answer=answer, clips=clips)
@@ -158,6 +202,3 @@ if frontend_dir.exists():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
-

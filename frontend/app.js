@@ -17,6 +17,30 @@ function formatTime(seconds) {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+function truncateText(text, maxLength = 140) {
+    if (!text) return '';
+    const normalized = text.replace(/\s+/g, ' ').trim();
+    return normalized.length > maxLength ? `${normalized.slice(0, maxLength).trim()}…` : normalized;
+}
+
+function renderFormattedFragment(text) {
+    const escapeHtml = (value) => value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+    const escaped = escapeHtml(text);
+    const withCode = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
+    const withStrong = withCode.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    const withEmphasis = withStrong.replace(/(^|[\s(])\*([^*]+)\*(?=[\s).,!?:;]|$)/g, (_, prefix, content) => {
+        return `${prefix}<em>${content}</em>`;
+    });
+
+    const template = document.createElement('template');
+    template.innerHTML = withEmphasis;
+    return template.content;
+}
+
 function activateChatMode() {
     chatSection.classList.remove('empty');
 }
@@ -27,22 +51,100 @@ function appendMessage(role, text) {
     msg.textContent = text;
     chatHistory.appendChild(msg);
     chatHistory.scrollTop = chatHistory.scrollHeight;
+    return msg;
 }
 
-function displayClips(clips) {
-    const container = document.createElement('div');
-    container.className = 'clips-container';
+function createCitationBadge(index, clip) {
+    const badge = document.createElement('button');
+    badge.type = 'button';
+    badge.className = 'citation-badge';
+    badge.textContent = String(index + 1);
+    badge.addEventListener('click', () => playClip(clip.start_time_sec));
 
-    clips.forEach((clip, index) => {
-        const btn = document.createElement('button');
-        btn.className = 'clip-button';
-        btn.textContent = `Clip ${index + 1} : ${formatTime(clip.start_time_sec)}-${formatTime(clip.end_time_sec)}`;
-        btn.onclick = () => playClip(clip.start_time_sec);
-        container.appendChild(btn);
+    const timeRange = `${formatTime(clip.start_time_sec)} – ${formatTime(clip.end_time_sec)}`;
+    const labelSummary = Array.isArray(clip.labels) && clip.labels.length
+        ? ` • Labels: ${clip.labels.slice(0, 3).join(', ')}`
+        : '';
+    const ocrSummary = clip.ocr_text
+        ? ` • OCR: ${truncateText(clip.ocr_text, 80)}`
+        : '';
+    const tooltip = `Clip ${index + 1} (${timeRange})${labelSummary}${ocrSummary}`;
+
+    badge.title = tooltip;
+    badge.setAttribute('aria-label', tooltip);
+
+    return badge;
+}
+
+function appendAssistantMessage(text, clips = []) {
+    const msg = document.createElement('div');
+    msg.className = 'message assistant';
+
+    const clipList = Array.isArray(clips) ? clips : [];
+    let clipIndex = 0;
+    let currentList = null;
+
+    const appendSentenceWithCitation = (target, sentence) => {
+        const cleaned = sentence.trim();
+        if (!cleaned) return;
+
+        if (target.childNodes.length) {
+            target.appendChild(document.createTextNode(' '));
+        }
+        target.appendChild(renderFormattedFragment(cleaned));
+
+        if (clipIndex < clipList.length) {
+            target.appendChild(document.createTextNode(' '));
+            target.appendChild(createCitationBadge(clipIndex, clipList[clipIndex]));
+            clipIndex += 1;
+        }
+    };
+
+    const renderLine = (lineText, target) => {
+        const segments = lineText.match(/[^.!?]+[.!?]?/g) || [lineText];
+        segments.forEach(segment => appendSentenceWithCitation(target, segment));
+    };
+
+    const lines = text.split('\n');
+
+    lines.forEach(rawLine => {
+        const line = rawLine.trim();
+        if (!line) {
+            currentList = null;
+            return;
+        }
+
+        if (line.startsWith('- ')) {
+            if (!currentList) {
+                currentList = document.createElement('ul');
+                currentList.className = 'message-list';
+                msg.appendChild(currentList);
+            }
+            const item = document.createElement('li');
+            item.className = 'message-list-item';
+            renderLine(line.slice(2), item);
+            currentList.appendChild(item);
+        } else {
+            currentList = null;
+            const paragraph = document.createElement('p');
+            paragraph.className = 'message-text';
+            renderLine(line, paragraph);
+            msg.appendChild(paragraph);
+        }
     });
 
-    chatHistory.appendChild(container);
+    if (clipIndex < clipList.length && msg.lastElementChild) {
+        const last = msg.lastElementChild;
+        while (clipIndex < clipList.length) {
+            last.appendChild(document.createTextNode(' '));
+            last.appendChild(createCitationBadge(clipIndex, clipList[clipIndex]));
+            clipIndex += 1;
+        }
+    }
+
+    chatHistory.appendChild(msg);
     chatHistory.scrollTop = chatHistory.scrollHeight;
+    return msg;
 }
 
 function playClip(startTime) {
@@ -108,9 +210,6 @@ async function askQuestion() {
     }
 
     appendMessage('user', query);
-    if (useVideoClips) {
-        appendMessage('system', '🎬 Using detailed analysis mode (processing video clips)');
-    }
     activeInput.value = '';
     activeButton.disabled = true;
 
@@ -137,11 +236,7 @@ async function askQuestion() {
 
         const data = await response.json();
 
-        appendMessage('assistant', data.answer);
-
-        if (data.clips && data.clips.length > 0) {
-            displayClips(data.clips);
-        }
+        appendAssistantMessage(data.answer, data.clips);
 
     } catch (error) {
         hideLoading();
@@ -203,6 +298,9 @@ function switchVideo(card) {
     }
 
     const videoId = card.dataset.videoId;
+    if (!videoId || videoId === currentVideoId) {
+        return;
+    }
     const videoTitle = card.dataset.title;
 
     document.querySelectorAll('.video-card').forEach(c => c.classList.remove('active'));
@@ -266,6 +364,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const useVideoClips = document.getElementById('useVideoClips');
 
     if (useVideoClipsInitial && useVideoClips) {
+        useVideoClipsInitial.checked = true;
+        useVideoClips.checked = true;
+
         useVideoClipsInitial.addEventListener('change', (event) => {
             useVideoClips.checked = event.target.checked;
         });

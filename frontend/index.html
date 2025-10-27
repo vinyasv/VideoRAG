@@ -60,10 +60,22 @@
                         </button>
                     </div>
                     <div class="detailed-analysis-toggle">
-                        <label>
-                            <input type="checkbox" id="useVideoClipsInitial">
-                            <span class="toggle-text">Detailed Analysis</span>
-                        </label>
+                        <div class="analysis-mode-row">
+                            <label class="analysis-label">
+                                <input type="checkbox" id="useVideoClipsInitial" checked>
+                                <span class="toggle-text">Detailed Analysis</span>
+                            </label>
+                            <div class="analysis-tooltip-wrapper">
+                                <button type="button" class="analysis-tooltip-trigger" aria-label="Learn about analysis modes">
+                                    ?
+                                </button>
+                                <div class="analysis-tooltip" role="tooltip">
+                                    <p class="analysis-tooltip-title">Video Analysis Modes</p>
+                                    <p><strong>Detailed Analysis:</strong> Uses LLMs for deep visual understanding, providing rich answers. Takes 15–30 seconds.</p>
+                                    <p><strong>Fast Mode:</strong> Uses only text metadata for quick answers, but lacks visual context.</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -80,10 +92,22 @@
                         </button>
                     </div>
                     <div class="detailed-analysis-toggle">
-                        <label>
-                            <input type="checkbox" id="useVideoClips">
-                            <span class="toggle-text">Detailed Analysis</span>
-                        </label>
+                        <div class="analysis-mode-row">
+                            <label class="analysis-label">
+                                <input type="checkbox" id="useVideoClips" checked>
+                                <span class="toggle-text">Detailed Analysis</span>
+                            </label>
+                            <div class="analysis-tooltip-wrapper">
+                                <button type="button" class="analysis-tooltip-trigger" aria-label="Learn about analysis modes">
+                                    ?
+                                </button>
+                                <div class="analysis-tooltip" role="tooltip">
+                                    <p class="analysis-tooltip-title">Video Analysis Modes</p>
+                                    <p><strong>Detailed Analysis:</strong> Uses LLMs for deep visual understanding, providing rich answers. Takes 15–30 seconds.</p>
+                                    <p><strong>Fast Mode:</strong> Uses only text metadata for quick answers, but lacks visual context.</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -93,4 +117,3 @@
     <script src="app.js"></script>
 </body>
 </html>
-
