@@ -188,6 +188,34 @@ function hideLoading() {
     }
 }
 
+function setMainVideoDetails(videoId, title) {
+    const mainVideoCard = document.querySelector('.video-card.main-video');
+    if (!mainVideoCard) {
+        return;
+    }
+    mainVideoCard.dataset.videoId = videoId;
+    if (title) {
+        mainVideoCard.dataset.title = title;
+        const titleElement = mainVideoCard.querySelector('.video-card-title');
+        if (titleElement) {
+            titleElement.textContent = title;
+        }
+    }
+}
+
+function updateVideoPlayerSource(url) {
+    if (!url) {
+        return;
+    }
+    videoPlayer.pause();
+    const source = videoPlayer.querySelector('source');
+    if (source) {
+        source.src = url;
+    }
+    videoPlayer.src = url;
+    videoPlayer.load();
+}
+
 function getActiveInput() {
     return chatSection.classList.contains('empty') ? queryInput : queryInputBottom;
 }
@@ -303,25 +331,21 @@ function switchVideo(card) {
     }
     const videoTitle = card.dataset.title;
 
-    document.querySelectorAll('.video-card').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.video-card:not(.main-video)').forEach(c => c.classList.remove('active'));
     card.classList.add('active');
-
-    currentVideoId = videoId;
 
     // Get signed URL from backend
     fetch(`${API_URL}/video/${videoId}`)
-        .then(response => response.json())
-        .then(data => {
-            const source = videoPlayer.querySelector('source');
-            source.src = data.url;
-            videoPlayer.load();
-
-            // Update video title
-            const mainVideoCard = document.querySelector('.video-card.main-video');
-            const titleElement = mainVideoCard.querySelector('.video-card-title');
-            if (titleElement) {
-                titleElement.textContent = videoTitle;
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Failed to fetch video URL (${response.status})`);
             }
+            return response.json();
+        })
+        .then(data => {
+            updateVideoPlayerSource(data.url);
+            setMainVideoDetails(videoId, videoTitle);
+            currentVideoId = videoId;
 
             // Clear chat and reset to empty state
             chatHistory.innerHTML = '';
@@ -337,6 +361,9 @@ function switchVideo(card) {
 }
 
 document.querySelectorAll('.video-card').forEach(card => {
+    if (card.classList.contains('main-video')) {
+        return;
+    }
     card.addEventListener('click', () => switchVideo(card));
 });
 
@@ -344,15 +371,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const activeCard = document.querySelector('.video-card.main-video');
     if (activeCard) {
         const videoId = activeCard.dataset.videoId;
+        const videoTitle = activeCard.dataset.title;
         currentVideoId = videoId;
+        setMainVideoDetails(videoId, videoTitle);
 
         // Load the main video
         fetch(`${API_URL}/video/${videoId}`)
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch video URL (${response.status})`);
+                }
+                return response.json();
+            })
             .then(data => {
-                const source = videoPlayer.querySelector('source');
-                source.src = data.url;
-                videoPlayer.load();
+                updateVideoPlayerSource(data.url);
             })
             .catch(error => {
                 console.error('Failed to load main video:', error);
