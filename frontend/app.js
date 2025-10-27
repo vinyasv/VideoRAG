@@ -9,7 +9,17 @@ const sendBtn = document.getElementById('sendBtn');
 const sendBtnBottom = document.getElementById('sendBtnBottom');
 const chatHistory = document.getElementById('chatHistory');
 const chatSection = document.querySelector('.chat-section');
+const exampleQueryButton = document.getElementById('exampleQueryButton');
+const exampleQueries = {
+    burglary_video: "Give me a description of the burglar's appearance",
+    fire3: "When does the explosion occur and what color are the flames?"
+};
 let currentVideoId;
+
+const initialMainVideoCard = document.querySelector('.video-card.main-video');
+if (initialMainVideoCard && initialMainVideoCard.dataset.videoId) {
+    currentVideoId = initialMainVideoCard.dataset.videoId;
+}
 
 function formatTime(seconds) {
     const mins = Math.floor(seconds / 60);
@@ -270,6 +280,8 @@ async function askQuestion() {
         hideLoading();
         appendMessage('error', 'Network error: ' + error.message);
     } finally {
+        sendBtn.disabled = false;
+        sendBtnBottom.disabled = false;
         if (bottomButton) {
             bottomButton.disabled = false;
             bottomInput.focus();
@@ -354,6 +366,9 @@ function switchVideo(card) {
             // Clear both inputs
             queryInput.value = '';
             queryInputBottom.value = '';
+            sendBtn.disabled = false;
+            sendBtnBottom.disabled = false;
+            queryInput.focus();
         })
         .catch(error => {
             console.error('Failed to load video:', error);
@@ -366,6 +381,21 @@ document.querySelectorAll('.video-card').forEach(card => {
     }
     card.addEventListener('click', () => switchVideo(card));
 });
+
+if (exampleQueryButton) {
+    exampleQueryButton.addEventListener('click', () => {
+        const query = exampleQueries[currentVideoId];
+        if (!query) {
+            return;
+        }
+        const activeInput = getActiveInput();
+        if (!activeInput) {
+            return;
+        }
+        activeInput.value = query;
+        activeInput.focus();
+    });
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     const activeCard = document.querySelector('.video-card.main-video');

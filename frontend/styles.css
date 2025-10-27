@@ -149,6 +149,10 @@ video {
     overflow: hidden;
 }
 
+.chat-section:not(.empty) {
+    overflow: visible;
+}
+
 /* Empty State - Centered Input */
 .chat-section.empty .chat-history {
     display: none;
@@ -395,6 +399,22 @@ video {
     align-items: center;
     gap: 6px;
     position: relative;
+}
+
+.chat-info-button {
+    position: absolute;
+    left: 18px;
+    bottom: 18px;
+    font-size: 10px;
+    text-decoration: underline;
+    color: #00000060;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+}
+
+.chat-section:not(.empty) .chat-info-button {
+    display: none;
 }
 
 .analysis-label {
